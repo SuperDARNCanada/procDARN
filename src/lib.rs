@@ -193,7 +193,7 @@ impl RawDmapRead {
         }
         let mut arrays: Vec<RawDmapArray> = vec![];
         for i in 0..num_arrays {
-            arrays.push(self.parse_array(size));
+            arrays.push(self.parse_array(size)?);
         }
 
         if self.cursor.position() - bytes_already_read != size as u64 {
@@ -219,7 +219,8 @@ impl RawDmapRead {
         }?;
 
         if !DmapType::all_keys().contains(&data_type_key) {
-            return Err(DmapError::new("PARSE SCALAR: Data type is corrupted. Record is likely corrupted".to_string()))
+            return Err(DmapError::new("PARSE SCALAR: Data type is corrupted. Record is likely \
+                corrupted".to_string()))
         }
 
         let data_type = DmapType::get_type_from_key(data_type_key)?;
@@ -233,6 +234,77 @@ impl RawDmapRead {
         };
 
         Ok(RawDmapScalar{data, name, mode})
+    }
+
+    fn parse_array(&mut self, record_size: i32) -> Result<RawDmapArray> {
+        let mode = 7;
+        let name = match self.read_data(DmapType::STRING("".to_string()))? {
+            DmapType::STRING(s) => Ok(s),
+            _ => Err(DmapError::new("PARSE ARRAY: Invalid array name".to_string()))
+        }?;
+        let data_type_key = match self.read_data(DmapType::CHAR(0))? {
+            DmapType::CHAR(c) => Ok(c),
+            _ => Err(DmapError::new("PARSE ARRAY: Invalid data type".to_string()))
+        }?;
+
+        if !DmapType::all_keys().contains(&data_type_key) {
+            return Err(DmapError::new("PARSE ARRAY: Data type is corrupted. Record is likely \
+                corrupted".to_string()))
+        }
+
+        let data_type = DmapType::get_type_from_key(data_type_key)?;
+
+        let array_dimension = match self.read_data(DmapType::INT(0))? {
+            DmapType::INT(i) => Ok(i),
+            _ => Err(DmapError::new("PARSE ARRAY: Invalid array dimension".to_string()))
+        }?;
+
+        if array_dimension > record_size {
+            return Err(DmapError::new("PARSE ARRAY: Parsed # of array dimensions are larger \
+                than record size. Record is likely corrupted".to_string()))
+        }
+        else if array_dimension <= 0 {
+            return Err(DmapError::new("PARSE ARRAY: Parsed # of array dimensions are zero or \
+                negative. Record is likely corrupted".to_string()))
+        }
+
+        let mut dimensions: Vec<i32> = vec![];
+        let mut total_elements = 1;
+        for i in 0..array_dimension {
+            let dim = match self.read_data(DmapType::INT(0))? {
+                DmapType::INT(val) => Ok(val),
+                _ => Err(DmapError::new("PARSE ARRAY: Array dimensions could not be parsed"
+                    .to_string()))
+            }?;
+            if dim <= 0 {
+                return Err(DmapError::new("PARSE ARRAY: Array dimension is zero or negative. \
+                    Record is likely corrupted".to_string()))
+            }
+            else if dim > record_size {
+                return Err(DmapError::new("PARSE ARRAY: Array dimension exceeds record size"
+                    .to_string()))
+            }
+            dimensions.push(dim);
+            total_elements = total_elements * dim;
+        }
+
+        if total_elements > record_size {
+            return Err(DmapError::new("PARSE ARRAY: Total array elements > record size."
+                .to_string()))
+        }
+        else if total_elements * data_type.get_num_bytes() as i32 > record_size {
+            return Err(DmapError::new("PARSE ARRAY: Array size exceeds record size. Data is \
+                likely corrupted".to_string()))
+        }
+
+        match data_type {
+            DmapType::STRING{..} | DmapType::CHAR{..} | DmapType::DMAP => {
+                self.read_dynamic_array()
+            }
+            _ => {
+                self.read_numerical_array()
+            }
+        }
     }
 
     fn read_data(&mut self, data_type: DmapType) -> Result<DmapType> {
