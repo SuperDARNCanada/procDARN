@@ -1,13 +1,11 @@
 use std::{fmt};
-use std::any::Any;
 use std::io::{Read, Cursor};
-use ndarray::prelude::*;
 use byteorder_pack::UnpackFrom;
 
 type Result<T> = std::result::Result<T, DmapError>;
 
 #[derive(Debug, Clone)]
-struct DmapError {
+pub struct DmapError {
     details: String
 }
 
@@ -23,9 +21,9 @@ impl fmt::Display for DmapError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C)]
-pub enum DmapType {
+enum DmapType {
     DMAP,
     CHAR(i8),
     SHORT(i16),
@@ -43,7 +41,7 @@ pub enum DmapType {
 impl DmapType {
     fn all_keys() -> Vec<i8> { vec![0, 1, 2, 3, 4, 8, 9, 10, 16, 17, 18, 19] }
 
-    fn get_num_bytes(self) -> u64 {
+    fn get_num_bytes(&self) -> u64 {
         match self {
             DmapType::CHAR {..}   => 1,
             DmapType::SHORT {..}  => 2,
@@ -59,22 +57,22 @@ impl DmapType {
         }
     }
 
-    fn get_type_from_fmt(fmt: char) -> Result<DmapType> {
-        match fmt {
-            'c' => Ok(DmapType::CHAR(0)),
-            'h' => Ok(DmapType::SHORT(0)),
-            'i' => Ok(DmapType::INT(0)),
-            'f' => Ok(DmapType::FLOAT(0.0)),
-            'd' => Ok(DmapType::DOUBLE(0.0)),
-            's' => Ok(DmapType::STRING("".to_string())),
-            'q' => Ok(DmapType::LONG(0)),
-            'B' => Ok(DmapType::UCHAR(0)),
-            'H' => Ok(DmapType::USHORT(0)),
-            'I' => Ok(DmapType::UINT(0)),
-            'Q' => Ok(DmapType::ULONG(0)),
-            _   => Err(DmapError::new(format!("Invalid format for DMAP type: {}", fmt)))
-        }
-    }
+    // fn get_type_from_fmt(fmt: char) -> Result<DmapType> {
+    //     match fmt {
+    //         'c' => Ok(DmapType::CHAR(0)),
+    //         'h' => Ok(DmapType::SHORT(0)),
+    //         'i' => Ok(DmapType::INT(0)),
+    //         'f' => Ok(DmapType::FLOAT(0.0)),
+    //         'd' => Ok(DmapType::DOUBLE(0.0)),
+    //         's' => Ok(DmapType::STRING("".to_string())),
+    //         'q' => Ok(DmapType::LONG(0)),
+    //         'B' => Ok(DmapType::UCHAR(0)),
+    //         'H' => Ok(DmapType::USHORT(0)),
+    //         'I' => Ok(DmapType::UINT(0)),
+    //         'Q' => Ok(DmapType::ULONG(0)),
+    //         _   => Err(DmapError::new(format!("Invalid format for DMAP type: {}", fmt)))
+    //     }
+    // }
 
     fn get_type_from_key(key: i8) -> Result<DmapType> {
         match key {
@@ -104,13 +102,10 @@ struct RawDmapScalar {
 
 #[derive(Debug)]
 struct RawDmapArray {
-    dmap_type: DmapType,
     name: String,
-    mode: String,
-    dimension: u32,
-    arr_dimensions: Vec<u32>,
-    data: Vec<u8>,
-    data_type_fmt: char
+    mode: i8,
+    arr_dimensions: Vec<i32>,
+    data: Vec<DmapType>,
 }
 
 #[derive(Debug)]
@@ -122,20 +117,20 @@ struct RawDmapRecord {
 }
 
 #[derive(Debug)]
-struct RawDmapRead {
+pub struct RawDmapRead {
     cursor: Cursor<Vec<u8>>,
     dmap_records: Vec<RawDmapRecord>,
 }
 
 impl RawDmapRead {
 
-    fn new(dmap_data: &mut &impl Read) -> Result<RawDmapRead> {
+    pub fn new(mut dmap_data: impl Read) -> Result<RawDmapRead> {
         let mut buffer: Vec<u8> = vec![];
 
         dmap_data.read_to_end(&mut buffer)
             .map_err(|_| DmapError::new("Could not read data".to_string()))?;
 
-        let mut cursor = Cursor::new(buffer);
+        let cursor = Cursor::new(buffer);
         let mut dmap_read = RawDmapRead{cursor, dmap_records: vec![]};
 
         // TODO: Test initial data integrity
@@ -148,7 +143,7 @@ impl RawDmapRead {
 
     fn parse_record(&mut self) -> Result<()> {
         let bytes_already_read = self.cursor.position();
-        let code = match self.read_data(DmapType::INT(0))? {
+        let _code = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
             _ => Err(DmapError::new("PARSE RECORD: Invalid code".to_string()))
         }?;
@@ -187,14 +182,14 @@ impl RawDmapRead {
         else if num_scalars + num_arrays > size {
             return Err(DmapError::new("PARSE RECORD: Invalid number of record elements. \
                 Array or scaler field is likely corrupted.".to_string()))
-        };
+        }
 
         let mut scalars: Vec<RawDmapScalar> = vec![];
-        for n in 0..num_scalars {
+        for _ in 0..num_scalars {
             scalars.push(self.parse_scalar()?);
         }
         let mut arrays: Vec<RawDmapArray> = vec![];
-        for i in 0..num_arrays {
+        for _ in 0..num_arrays {
             arrays.push(self.parse_array(size)?);
         }
 
@@ -272,7 +267,7 @@ impl RawDmapRead {
 
         let mut dimensions: Vec<i32> = vec![];
         let mut total_elements = 1;
-        for i in 0..array_dimension {
+        for _ in 0..array_dimension {
             let dim = match self.read_data(DmapType::INT(0))? {
                 DmapType::INT(val) => Ok(val),
                 _ => Err(DmapError::new("PARSE ARRAY: Array dimensions could not be parsed"
@@ -299,23 +294,11 @@ impl RawDmapRead {
                 likely corrupted".to_string()))
         }
 
-        match data_type {
-            DmapType::STRING{..} | DmapType::CHAR{..} | DmapType::DMAP => {
-                self.read_dynamic_array()
-            }
-            _ => {
-                self.read_numerical_array(data_type, dimensions, total_elements)
-            }
+        let mut data = vec![];
+        for _ in 0..total_elements {
+            data.push(self.read_data(data_type.clone())?);
         }
-    }
-
-    fn read_numerical_array(&mut self, data_type: DmapType, dimensions: Vec<i32>,
-                            total_elements: i32) -> Result<Array> {
-        let position = self.cursor.position();
-        let num_bytes = total_elements as u64 * data_type.get_num_bytes();
-
-        let data = Array::<dimensions>::from_shape_vec(dimensions, self.cursor.get_ref()[position..position+num_bytes].clone())
-            .map_err(|_| Err(DmapError::new("READ NUMERICAL ARRAY: Unable to read array".to_string())));
+        Ok(RawDmapArray{name, mode, arr_dimensions: dimensions, data})
 
     }
 
@@ -331,55 +314,29 @@ impl RawDmapRead {
         let position = self.cursor.position() as usize;
         let data_size = data_type.get_num_bytes() as usize;
         let data: &[u8] = &self.cursor.get_mut()[position..position+data_size];
-        self.cursor.set_position({position + data_size} as u64);
 
-        match data_type {
-            DmapType::DMAP        => {
-                match self.parse_record() {
-                    Ok(_) => Ok(DmapType::DMAP),
-                    Err(e) => Err(e)
-                }
-            },
-            DmapType::UCHAR {..}  => {
-                Ok(DmapType::UCHAR(<u8>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            },
-            DmapType::CHAR {..}   => {
-                Ok(DmapType::CHAR(<i8>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            },
-            DmapType::SHORT {..}  => {
-                Ok(DmapType::SHORT(<i16>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            },
-            DmapType::USHORT {..} => {
-                Ok(DmapType::USHORT(<u16>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
-            DmapType::INT {..}    => {
-                Ok(DmapType::INT(<i32>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            },
-            DmapType::UINT {..}   => {
-                Ok(DmapType::UINT(<u32>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
-            DmapType::LONG {..}   => {
-                Ok(DmapType::LONG(<i64>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
-            DmapType::ULONG {..}  => {
-                Ok(DmapType::ULONG(<u64>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
-            DmapType::FLOAT {..}  => {
-                Ok(DmapType::FLOAT(<f32>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
-            DmapType::DOUBLE {..} => {
-                Ok(DmapType::DOUBLE(<f64>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?))
-            }
+        let parsed_data = match data_type {
+            DmapType::DMAP        => self.parse_record().map(|_| DmapType::DMAP)?,
+            DmapType::UCHAR {..}  => DmapType::UCHAR(<u8>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::CHAR {..}   => DmapType::CHAR(<i8>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::SHORT {..}  => DmapType::SHORT(<i16>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::USHORT {..} => DmapType::USHORT(<u16>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::INT {..}    => DmapType::INT(<i32>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::UINT {..}   => DmapType::UINT(<u32>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::LONG {..}   => DmapType::LONG(<i64>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::ULONG {..}  => DmapType::ULONG(<u64>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::FLOAT {..}  => DmapType::FLOAT(<f32>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
+            DmapType::DOUBLE {..} => DmapType::DOUBLE(<f64>::unpack_from_be(&mut data.clone())
+                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
             DmapType::STRING {..} => {
                 let mut byte_counter = 0;
                 while self.cursor.get_ref()[position + byte_counter] != 0 {
@@ -389,12 +346,14 @@ impl RawDmapRead {
                         Dmap record is corrupted".to_string()))
                     }
                 }
-                let mut data = String::from_utf8(self.cursor.get_ref().clone())
+                let data = String::from_utf8(self.cursor.get_ref().clone())
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?;
                 self.cursor.set_position({position + byte_counter + 1} as u64);
-                Ok(DmapType::STRING(data))
+                DmapType::STRING(data)
             }
-        }
+        };
+        self.cursor.set_position({position + data_size} as u64);
+        Ok(parsed_data)
     }
 
 }
