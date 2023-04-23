@@ -39,7 +39,7 @@ pub enum DmapType {
 }
 
 impl DmapType {
-    fn all_keys() -> Vec<usize> { vec![0, 1, 2, 3, 4, 8, 9, 10, 16, 17, 18, 19] }
+    fn all_keys() -> Vec<i8> { vec![0, 1, 2, 3, 4, 8, 9, 10, 16, 17, 18, 19] }
 
     fn get_num_bytes(self) -> u64 {
         match self {
@@ -74,7 +74,7 @@ impl DmapType {
         }
     }
 
-    fn get_type_from_key(key: usize) -> Result<DmapType> {
+    fn get_type_from_key(key: i8) -> Result<DmapType> {
         match key {
             0  => Ok(DmapType::DMAP),
             1  => Ok(DmapType::CHAR(0)),
@@ -94,11 +94,9 @@ impl DmapType {
 }
 
 struct RawDmapScalar {
-    dmap_type: DmapType,
-    name: Box<str>,
-    mode: Box<str>,
-    data: Box<str>,
-    data_type_fmt: char
+    data: DmapType,
+    name: String,
+    mode: i8,
 }
 
 struct RawDmapArray {
@@ -187,7 +185,7 @@ impl RawDmapRead {
 
         let mut scalars: Vec<RawDmapScalar> = vec![];
         for n in 0..num_scalars {
-            scalars.push(self.parse_scalar());
+            scalars.push(self.parse_scalar()?);
         }
         let mut arrays: Vec<RawDmapArray> = vec![];
         for i in 0..num_arrays {
@@ -203,6 +201,34 @@ impl RawDmapRead {
         self.dmap_records
             .push(RawDmapRecord{num_scalars, scalars, num_arrays, arrays});
         Ok(())
+    }
+
+    fn parse_scalar(&mut self) -> Result<RawDmapScalar> {
+        let mode = 6;
+        let name = match self.read_data(DmapType::STRING("".to_string()))? {
+            DmapType::STRING(s) => Ok(s),
+            _ => Err(DmapError::new("PARSE SCALAR: Invalid scalar name".to_string()))
+        }?;
+        let data_type_key = match self.read_data(DmapType::CHAR(0))? {
+            DmapType::CHAR(c) => Ok(c),
+            _ => Err(DmapError::new("PARSE SCALAR: Invalid data type".to_string()))
+        }?;
+
+        if !DmapType::all_keys().contains(&data_type_key) {
+            return Err(DmapError::new("PARSE SCALAR: Data type is corrupted. Record is likely corrupted".to_string()))
+        }
+
+        let data_type = DmapType::get_type_from_key(data_type_key)?;
+
+        let data = match data_type {
+            DmapType::DMAP => {
+                self.parse_record()?;
+                DmapType::DMAP
+            },
+            _              => self.read_data(data_type)?
+        };
+
+        Ok(RawDmapScalar{data, name, mode})
     }
 
     fn read_data(&mut self, data_type: DmapType) -> Result<DmapType> {
