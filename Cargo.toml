@@ -6,4 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = "1.13.1"
+byteorder = "1.4.3"
 byteorder-pack = "0.1.0"

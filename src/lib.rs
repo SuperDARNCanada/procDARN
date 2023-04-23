@@ -1,6 +1,8 @@
 use std::{fmt};
-use std::io::{Read, Cursor};
-use byteorder_pack::UnpackFrom;
+use std::fs::File;
+use std::io::{Read, Cursor, Write};
+use std::path::Path;
+use bytemuck;
 
 type Result<T> = std::result::Result<T, DmapError>;
 
@@ -91,6 +93,28 @@ impl DmapType {
             _  => Err(DmapError::new(format!("Invalid key for DMAP type: {}", key)))
         }
     }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            DmapType::DMAP           => vec![],
+            DmapType::CHAR(x)   => bytemuck::bytes_of(x).to_vec(),
+            DmapType::UCHAR(x)  => bytemuck::bytes_of(x).to_vec(),
+            DmapType::SHORT(x)  => bytemuck::bytes_of(x).to_vec(),
+            DmapType::USHORT(x) => bytemuck::bytes_of(x).to_vec(),
+            DmapType::INT(x)    => bytemuck::bytes_of(x).to_vec(),
+            DmapType::UINT(x)   => bytemuck::bytes_of(x).to_vec(),
+            DmapType::LONG(x)   => bytemuck::bytes_of(x).to_vec(),
+            DmapType::ULONG(x)  => bytemuck::bytes_of(x).to_vec(),
+            DmapType::FLOAT(x)  => bytemuck::bytes_of(x).to_vec(),
+            DmapType::DOUBLE(x) => bytemuck::bytes_of(x).to_vec(),
+            DmapType::STRING(x) => {
+                let mut bytes = vec![];
+                bytes.append(&mut x.as_bytes().to_vec());
+                bytes.push(0);      // Rust String not null-terminated
+                bytes
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -98,6 +122,16 @@ struct RawDmapScalar {
     data: DmapType,
     name: String,
     mode: i8,
+}
+
+impl RawDmapScalar {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.append(&mut DmapType::STRING(self.name).to_bytes());
+        bytes.append(&mut DmapType::CHAR(self.mode).to_bytes());
+        bytes.append(&mut self.data.to_bytes());
+        bytes
+    }
 }
 
 #[derive(Debug)]
@@ -108,12 +142,44 @@ struct RawDmapArray {
     data: Vec<DmapType>,
 }
 
+impl RawDmapArray {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes: Vec<u8> = vec![];
+        bytes.append(&mut DmapType::STRING(self.name).to_bytes());
+        bytes.append(&mut DmapType::CHAR(self.mode).to_bytes());
+        bytes.append(&mut self.data.to_bytes());
+        bytes
+    }
+}
+
 #[derive(Debug)]
-struct RawDmapRecord {
+pub struct RawDmapRecord {
     num_scalars: i32,
     num_arrays: i32,
     scalars: Vec<RawDmapScalar>,
     arrays: Vec<RawDmapArray>
+}
+
+impl RawDmapRecord {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut container: Vec<u8> = vec![];
+        let code = 65537;   // No idea why this is what it is, copied from backscatter
+
+
+        let mut data_bytes: Vec<u8> = vec![];
+        for scalar in self.scalars {
+            data_bytes.append(scalar.to_bytes());
+        }
+        for array in self.arrays {
+            data_bytes.append(array.to_bytes());
+        }
+
+        container.append(&mut DmapType::INT(code).to_bytes());
+        container.append(&mut DmapType::INT(data_bytes.len() as i32).to_bytes());
+        container.append(&mut DmapType::INT(self.num_scalars).to_bytes());
+        container.append(&mut DmapType::INT(self.num_arrays).to_bytes());
+        vec![]
+    }
 }
 
 #[derive(Debug)]
@@ -132,8 +198,6 @@ impl RawDmapRead {
 
         let cursor = Cursor::new(buffer);
         let mut dmap_read = RawDmapRead{cursor, dmap_records: vec![]};
-
-        // TODO: Test initial data integrity
 
         while dmap_read.cursor.position() < dmap_read.cursor.get_ref().len() as u64 {
             dmap_read.parse_record()?;
@@ -317,25 +381,24 @@ impl RawDmapRead {
 
         let parsed_data = match data_type {
             DmapType::DMAP        => self.parse_record().map(|_| DmapType::DMAP)?,
-            DmapType::UCHAR {..}  => DmapType::UCHAR(<u8>::unpack_from_be(&mut data.clone())
+            DmapType::UCHAR {..}  => DmapType::UCHAR(data[0]),
+            DmapType::CHAR {..}   => DmapType::CHAR(*bytemuck::try_from_bytes::<i8>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::CHAR {..}   => DmapType::CHAR(<i8>::unpack_from_be(&mut data.clone())
+            DmapType::SHORT {..}  => DmapType::SHORT(*bytemuck::try_from_bytes::<i16>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::SHORT {..}  => DmapType::SHORT(<i16>::unpack_from_be(&mut data.clone())
+            DmapType::USHORT {..} => DmapType::USHORT(*bytemuck::try_from_bytes::<u16>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::USHORT {..} => DmapType::USHORT(<u16>::unpack_from_be(&mut data.clone())
+            DmapType::INT {..}    => DmapType::INT(*bytemuck::try_from_bytes::<i32>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::INT {..}    => DmapType::INT(<i32>::unpack_from_be(&mut data.clone())
+            DmapType::UINT {..}   => DmapType::UINT(*bytemuck::try_from_bytes::<u32>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::UINT {..}   => DmapType::UINT(<u32>::unpack_from_be(&mut data.clone())
+            DmapType::LONG {..}   => DmapType::LONG(*bytemuck::try_from_bytes::<i64>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::LONG {..}   => DmapType::LONG(<i64>::unpack_from_be(&mut data.clone())
+            DmapType::ULONG {..}  => DmapType::ULONG(*bytemuck::try_from_bytes::<u64>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::ULONG {..}  => DmapType::ULONG(<u64>::unpack_from_be(&mut data.clone())
+            DmapType::FLOAT {..}  => DmapType::FLOAT(*bytemuck::try_from_bytes::<f32>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::FLOAT {..}  => DmapType::FLOAT(<f32>::unpack_from_be(&mut data.clone())
-                    .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
-            DmapType::DOUBLE {..} => DmapType::DOUBLE(<f64>::unpack_from_be(&mut data.clone())
+            DmapType::DOUBLE {..} => DmapType::DOUBLE(*bytemuck::try_from_bytes::<f64>(data)
                     .map_err(|_| DmapError::new("READ DATA: Unable to interpret data".to_string()))?),
             DmapType::STRING {..} => {
                 let mut byte_counter = 0;
@@ -356,4 +419,23 @@ impl RawDmapRead {
         Ok(parsed_data)
     }
 
+}
+
+#[derive(Debug)]
+pub struct RawDmapWrite {
+    dmap_records: Vec<RawDmapRecord>,
+    stream: Vec<u8>,
+}
+
+impl RawDmapWrite {
+    pub fn new<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std::io::Result<()> {
+        // let writer = RawDmapWrite{dmap_records, stream: vec![]};
+        let mut stream = vec![];
+        for rec in dmap_records {
+            stream.append(&mut rec.to_bytes());
+        }
+        let mut file = File::create(path)?;
+        file.write_all(&stream)?;
+        Ok(())
+    }
 }
