@@ -93,22 +93,25 @@ impl DmapType {
     }
 }
 
+#[derive(Debug)]
 struct RawDmapScalar {
     data: DmapType,
     name: String,
     mode: i8,
 }
 
+#[derive(Debug)]
 struct RawDmapArray {
     dmap_type: DmapType,
-    name: Box<str>,
-    mode: Box<str>,
+    name: String,
+    mode: String,
     dimension: u32,
     arr_dimensions: Vec<u32>,
     data: Vec<u8>,
     data_type_fmt: char
 }
 
+#[derive(Debug)]
 struct RawDmapRecord {
     num_scalars: i32,
     num_arrays: i32,
@@ -116,6 +119,7 @@ struct RawDmapRecord {
     arrays: Vec<RawDmapArray>
 }
 
+#[derive(Debug)]
 struct RawDmapRead {
     cursor: Cursor<Vec<u8>>,
     dmap_records: Vec<RawDmapRecord>,
