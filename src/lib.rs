@@ -1,5 +1,7 @@
 use std::{fmt};
+use std::any::Any;
 use std::io::{Read, Cursor};
+use ndarray::prelude::*;
 use byteorder_pack::UnpackFrom;
 
 type Result<T> = std::result::Result<T, DmapError>;
@@ -302,9 +304,19 @@ impl RawDmapRead {
                 self.read_dynamic_array()
             }
             _ => {
-                self.read_numerical_array()
+                self.read_numerical_array(data_type, dimensions, total_elements)
             }
         }
+    }
+
+    fn read_numerical_array(&mut self, data_type: DmapType, dimensions: Vec<i32>,
+                            total_elements: i32) -> Result<Array> {
+        let position = self.cursor.position();
+        let num_bytes = total_elements as u64 * data_type.get_num_bytes();
+
+        let data = Array::<dimensions>::from_shape_vec(dimensions, self.cursor.get_ref()[position..position+num_bytes].clone())
+            .map_err(|_| Err(DmapError::new("READ NUMERICAL ARRAY: Unable to read array".to_string())));
+
     }
 
     fn read_data(&mut self, data_type: DmapType) -> Result<DmapType> {
