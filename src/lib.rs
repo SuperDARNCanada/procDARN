@@ -1,7 +1,8 @@
 use bytemuck;
-use std::any::Any;
+use bytemuck::PodCastError;
 use std::error::Error;
 use std::fmt;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
@@ -9,28 +10,29 @@ use std::path::Path;
 type Result<T> = std::result::Result<T, DmapError>;
 
 #[derive(Debug, Clone)]
-pub struct DmapError {
-    details: String,
-    // value: ,
+pub enum DmapError {
+    Parse(String, Vec<u8>),
+    BadVal(String, DmapType),
+    Message(String),
+    CastError(String, PodCastError),
 }
 
-impl DmapError {
-    fn new(msg: String) -> DmapError {
-        DmapError {
-            details: msg.to_string(),
-        }
-    }
-}
+impl Error for DmapError {}
 
-impl fmt::Display for DmapError {
+impl Display for DmapError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.details)
+        match self {
+            DmapError::Message(msg) => write!(f, "{}", msg),
+            DmapError::BadVal(msg, val) => write!(f, "{}: {:?}", msg, val),
+            DmapError::Parse(msg, val) => write!(f, "{}: {:?}", msg, val),
+            DmapError::CastError(msg, err) => write!(f, "{}: {}", msg, err.to_string()),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-enum DmapType {
+pub enum DmapType {
     DMAP,
     CHAR(i8),
     SHORT(i16),
@@ -80,7 +82,7 @@ impl DmapType {
             17 => Ok(DmapType::USHORT(0)),
             18 => Ok(DmapType::UINT(0)),
             19 => Ok(DmapType::ULONG(0)),
-            _ => Err(DmapError::new(format!(
+            _ => Err(DmapError::Message(format!(
                 "Invalid key for DMAP type: {}",
                 key
             ))),
@@ -106,6 +108,25 @@ impl DmapType {
                 bytes.push(0); // Rust String not null-terminated
                 bytes
             }
+        }
+    }
+}
+
+impl Display for DmapType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DmapType::DMAP => write!(f, "DMAP"),
+            DmapType::CHAR(x) => write!(f, "{}", x),
+            DmapType::SHORT(x) => write!(f, "{}", x),
+            DmapType::INT(x) => write!(f, "{}", x),
+            DmapType::FLOAT(x) => write!(f, "{}", x),
+            DmapType::DOUBLE(x) => write!(f, "{}", x),
+            DmapType::STRING(x) => write!(f, "{:?}", x),
+            DmapType::LONG(x) => write!(f, "{}", x),
+            DmapType::UCHAR(x) => write!(f, "{}", x),
+            DmapType::USHORT(x) => write!(f, "{}", x),
+            DmapType::UINT(x) => write!(f, "{}", x),
+            DmapType::ULONG(x) => write!(f, "{}", x),
         }
     }
 }
@@ -188,7 +209,7 @@ impl RawDmapRead {
 
         dmap_data
             .read_to_end(&mut buffer)
-            .map_err(|_| DmapError::new("Could not read data".to_string()))?;
+            .map_err(|_| DmapError::Message("Could not read data".to_string()))?;
 
         let cursor = Cursor::new(buffer);
         let mut dmap_read = RawDmapRead {
@@ -206,11 +227,11 @@ impl RawDmapRead {
         let bytes_already_read = self.cursor.position();
         let _code = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
-            _ => Err(DmapError::new("PARSE RECORD: Invalid code".to_string())),
+            _ => Err(DmapError::Message("PARSE RECORD: Invalid code".to_string())),
         }?;
         let size = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
-            _ => Err(DmapError::new("PARSE RECORD: Invalid size".to_string())),
+            _ => Err(DmapError::Message("PARSE RECORD: Invalid size".to_string())),
         }?;
 
         // adding 8 bytes because code and size are part of the record.
@@ -218,13 +239,13 @@ impl RawDmapRead {
             > self.cursor.get_ref().len() as u64 - self.cursor.position()
                 + 2 * DmapType::INT(0).get_num_bytes()
         {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE RECORD: Integrity check shows record size bigger than \
                 remaining buffer. Data is likely corrupted"
                     .to_string(),
             ));
         } else if size <= 0 {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE RECORD: Integrity check shows record size <= 0. \
                 Data is likely corrupted"
                     .to_string(),
@@ -233,27 +254,26 @@ impl RawDmapRead {
 
         let num_scalars = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE RECORD: Invalid number of scalars".to_string(),
             )),
         }?;
         let num_arrays = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE RECORD: Invalid number of arrays".to_string(),
             )),
         }?;
-
         if num_scalars <= 0 {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE RECORD: Number of scalers is 0 or negative.".to_string(),
             ));
         } else if num_arrays <= 0 {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE RECORD: Number of arrays is 0 or negative.".to_string(),
             ));
         } else if num_scalars + num_arrays > size {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE RECORD: Invalid number of record elements. \
                 Array or scaler field is likely corrupted."
                     .to_string(),
@@ -264,13 +284,14 @@ impl RawDmapRead {
         for _ in 0..num_scalars {
             scalars.push(self.parse_scalar()?);
         }
+
         let mut arrays: Vec<RawDmapArray> = vec![];
         for _ in 0..num_arrays {
             arrays.push(self.parse_array(size)?);
         }
 
         if self.cursor.position() - bytes_already_read != size as u64 {
-            return Err(DmapError::new(format!(
+            return Err(DmapError::Message(format!(
                 "PARSE RECORD: Bytes read {} does not match the records size field {}",
                 self.cursor.position() - bytes_already_read,
                 size
@@ -290,22 +311,23 @@ impl RawDmapRead {
         let mode = 6;
         let name = match self.read_data(DmapType::STRING("".to_string()))? {
             DmapType::STRING(s) => Ok(s),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE SCALAR: Invalid scalar name".to_string(),
             )),
         }?;
         let data_type_key = match self.read_data(DmapType::CHAR(0))? {
             DmapType::CHAR(c) => Ok(c),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE SCALAR: Invalid data type".to_string(),
             )),
         }?;
 
         if !DmapType::all_keys().contains(&data_type_key) {
-            return Err(DmapError::new(
+            return Err(DmapError::BadVal(
                 "PARSE SCALAR: Data type is corrupted. Record is likely \
                 corrupted"
                     .to_string(),
+                DmapType::CHAR(data_type_key),
             ));
         }
 
@@ -326,17 +348,19 @@ impl RawDmapRead {
         let mode = 7;
         let name = match self.read_data(DmapType::STRING("".to_string()))? {
             DmapType::STRING(s) => Ok(s),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE ARRAY: Invalid array name".to_string(),
             )),
         }?;
         let data_type_key = match self.read_data(DmapType::CHAR(0))? {
             DmapType::CHAR(c) => Ok(c),
-            _ => Err(DmapError::new("PARSE ARRAY: Invalid data type".to_string())),
+            _ => Err(DmapError::Message(
+                "PARSE ARRAY: Invalid data type".to_string(),
+            )),
         }?;
 
         if !DmapType::all_keys().contains(&data_type_key) {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE ARRAY: Data type is corrupted. Record is likely \
                 corrupted"
                     .to_string(),
@@ -347,19 +371,19 @@ impl RawDmapRead {
 
         let array_dimension = match self.read_data(DmapType::INT(0))? {
             DmapType::INT(i) => Ok(i),
-            _ => Err(DmapError::new(
+            _ => Err(DmapError::Message(
                 "PARSE ARRAY: Invalid array dimension".to_string(),
             )),
         }?;
 
         if array_dimension > record_size {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE ARRAY: Parsed # of array dimensions are larger \
                 than record size. Record is likely corrupted"
                     .to_string(),
             ));
         } else if array_dimension <= 0 {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE ARRAY: Parsed # of array dimensions are zero or \
                 negative. Record is likely corrupted"
                     .to_string(),
@@ -371,18 +395,18 @@ impl RawDmapRead {
         for _ in 0..array_dimension {
             let dim = match self.read_data(DmapType::INT(0))? {
                 DmapType::INT(val) => Ok(val),
-                _ => Err(DmapError::new(
+                _ => Err(DmapError::Message(
                     "PARSE ARRAY: Array dimensions could not be parsed".to_string(),
                 )),
             }?;
             if dim <= 0 {
-                return Err(DmapError::new(
+                return Err(DmapError::Message(
                     "PARSE ARRAY: Array dimension is zero or negative. \
                     Record is likely corrupted"
                         .to_string(),
                 ));
             } else if dim > record_size {
-                return Err(DmapError::new(
+                return Err(DmapError::Message(
                     "PARSE ARRAY: Array dimension exceeds record size".to_string(),
                 ));
             }
@@ -391,17 +415,16 @@ impl RawDmapRead {
         }
 
         if total_elements > record_size {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE ARRAY: Total array elements > record size.".to_string(),
             ));
         } else if total_elements * data_type.get_num_bytes() as i32 > record_size {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "PARSE ARRAY: Array size exceeds record size. Data is \
                 likely corrupted"
                     .to_string(),
             ));
         }
-
         let mut data = vec![];
         for _ in 0..total_elements {
             data.push(self.read_data(data_type.clone())?);
@@ -416,12 +439,12 @@ impl RawDmapRead {
 
     fn read_data(&mut self, data_type: DmapType) -> Result<DmapType> {
         if self.cursor.position() > self.cursor.get_ref().len() as u64 {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "READ DATA: Cursor extends out of buffer. Data is likely corrupted".to_string(),
             ));
         }
         if self.cursor.get_ref().len() as u64 - self.cursor.position() < data_type.get_num_bytes() {
-            return Err(DmapError::new(
+            return Err(DmapError::Message(
                 "READ DATA: Byte offsets into buffer are not properly aligned. \
             Data is likely corrupted"
                     .to_string(),
@@ -429,78 +452,79 @@ impl RawDmapRead {
         }
 
         let position = self.cursor.position() as usize;
-        let data_size = data_type.get_num_bytes() as usize;
+        let mut data_size = data_type.get_num_bytes() as usize;
         let data: &[u8] = &self.cursor.get_mut()[position..position + data_size];
-
         let parsed_data = match data_type {
             DmapType::DMAP => self.parse_record().map(|_| DmapType::DMAP)?,
             DmapType::UCHAR { .. } => DmapType::UCHAR(data[0]),
             DmapType::CHAR { .. } => {
                 DmapType::CHAR(*bytemuck::try_from_bytes::<i8>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret char".to_string())
+                    DmapError::Message("READ DATA: Unable to interpret char".to_string())
                 })?)
             }
             DmapType::SHORT { .. } => {
-                DmapType::SHORT(*bytemuck::try_from_bytes::<i16>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret short".to_string())
+                DmapType::SHORT(bytemuck::try_pod_read_unaligned::<i16>(data).map_err(|e| {
+                    DmapError::CastError("READ DATA: Unable to interpret short".to_string(), e)
                 })?)
             }
             DmapType::USHORT { .. } => {
-                DmapType::USHORT(*bytemuck::try_from_bytes::<u16>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret ushort".to_string())
+                DmapType::USHORT(*bytemuck::try_from_bytes::<u16>(data).map_err(|e| {
+                    DmapError::CastError("READ DATA: Unable to interpret ushort".to_string(), e)
                 })?)
             }
             DmapType::INT { .. } => {
-                DmapType::INT(*bytemuck::try_from_bytes::<i32>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret int".to_string())
+                DmapType::INT(bytemuck::try_pod_read_unaligned::<i32>(data).map_err(|e| {
+                    DmapError::CastError("READ DATA: Unable to interpret int".to_string(), e)
                 })?)
             }
             DmapType::UINT { .. } => {
                 DmapType::UINT(*bytemuck::try_from_bytes::<u32>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret uint".to_string())
+                    DmapError::Message("READ DATA: Unable to interpret uint".to_string())
                 })?)
             }
             DmapType::LONG { .. } => {
                 DmapType::LONG(*bytemuck::try_from_bytes::<i64>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret long".to_string())
+                    DmapError::Message("READ DATA: Unable to interpret long".to_string())
                 })?)
             }
             DmapType::ULONG { .. } => {
                 DmapType::ULONG(*bytemuck::try_from_bytes::<u64>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret ulong".to_string())
+                    DmapError::Message("READ DATA: Unable to interpret ulong".to_string())
                 })?)
             }
             DmapType::FLOAT { .. } => {
-                DmapType::FLOAT(*bytemuck::try_from_bytes::<f32>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret float".to_string())
+                DmapType::FLOAT(bytemuck::try_pod_read_unaligned::<f32>(data).map_err(|_| {
+                    DmapError::Message("READ DATA: Unable to interpret float".to_string())
                 })?)
             }
             DmapType::DOUBLE { .. } => {
-                DmapType::DOUBLE(*bytemuck::try_from_bytes::<f64>(data).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret double".to_string())
+                DmapType::DOUBLE(bytemuck::try_pod_read_unaligned::<f64>(data).map_err(|_| {
+                    DmapError::Message("READ DATA: Unable to interpret double".to_string())
                 })?)
             }
             DmapType::STRING { .. } => {
                 let mut byte_counter = 0;
-                while self.cursor.get_ref()[position + byte_counter] != 0 {
+                let stream = self.cursor.get_ref();
+                while stream[position + byte_counter] != 0 {
                     byte_counter += 1;
-                    if position + byte_counter >= self.cursor.get_ref().len() {
-                        return Err(DmapError::new(
+                    if position + byte_counter >= stream.len() {
+                        return Err(DmapError::Message(
                             "READ DATA: String is improperly terminated. \
                         Dmap record is corrupted"
                                 .to_string(),
                         ));
                     }
                 }
-                let data = String::from_utf8(self.cursor.get_ref().clone()).map_err(|_| {
-                    DmapError::new("READ DATA: Unable to interpret string".to_string())
-                })?;
-                self.cursor
-                    .set_position({ position + byte_counter + 1 } as u64);
+                let data = String::from_utf8(stream[position..position + byte_counter].to_owned())
+                    .map_err(|_| {
+                        DmapError::Message("READ DATA: Unable to interpret string".to_string())
+                    })?;
+                data_size = byte_counter + 1;
                 DmapType::STRING(data)
             }
         };
         self.cursor.set_position({ position + data_size } as u64);
+
         Ok(parsed_data)
     }
 }
