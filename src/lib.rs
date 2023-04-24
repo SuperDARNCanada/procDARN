@@ -53,6 +53,7 @@ impl DmapType {
         vec![0, 1, 2, 3, 4, 8, 9, 10, 16, 17, 18, 19]
     }
 
+    /// Gets the number of bytes needed to represent the data.
     fn get_num_bytes(&self) -> u64 {
         match self {
             DmapType::CHAR { .. } => 1,
@@ -69,6 +70,7 @@ impl DmapType {
         }
     }
 
+    /// Gets the data type from a numeric key.
     fn get_type_from_key(key: i8) -> Result<DmapType> {
         match key {
             0 => Ok(DmapType::DMAP),
@@ -90,6 +92,7 @@ impl DmapType {
         }
     }
 
+    /// Gets the numeric key for the data type.
     fn get_key(&self) -> i8 {
         match self {
             DmapType::DMAP => 0,
@@ -107,6 +110,7 @@ impl DmapType {
         }
     }
 
+    /// Converts into raw bytes
     fn to_bytes(&self) -> Vec<u8> {
         match self {
             DmapType::DMAP => vec![],
@@ -157,6 +161,7 @@ pub struct RawDmapScalar {
 }
 
 impl RawDmapScalar {
+    /// Converts into raw bytes
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
@@ -188,6 +193,7 @@ impl PartialEq for RawDmapArray {
 }
 
 impl RawDmapArray {
+    /// Converts into raw bytes
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
@@ -226,6 +232,7 @@ impl PartialEq for RawDmapRecord {
 }
 
 impl RawDmapRecord {
+    /// Converts into raw bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut container: Vec<u8> = vec![];
         let code = 65537; // No idea why this is what it is, copied from backscatter
@@ -247,6 +254,7 @@ impl RawDmapRecord {
     }
 }
 
+/// Convenience struct for reading DMAPs
 #[derive(Debug)]
 pub struct RawDmapRead {
     cursor: Cursor<Vec<u8>>,
@@ -254,6 +262,7 @@ pub struct RawDmapRead {
 }
 
 impl RawDmapRead {
+    /// Reads a record starting from cursor position
     fn parse_record(&mut self) -> Result<()> {
         let bytes_already_read = self.cursor.position();
         let _code = match self.read_data(DmapType::INT(0))? {
@@ -338,6 +347,7 @@ impl RawDmapRead {
         Ok(())
     }
 
+    /// Reads a scalar starting from cursor position
     fn parse_scalar(&mut self) -> Result<RawDmapScalar> {
         let mode = 6;
         let name = match self.read_data(DmapType::STRING("".to_string()))? {
@@ -375,6 +385,7 @@ impl RawDmapRead {
         Ok(RawDmapScalar { data, name, mode })
     }
 
+    /// Reads an array starting from cursor position
     fn parse_array(&mut self, record_size: i32) -> Result<RawDmapArray> {
         let mode = 7;
         let name = match self.read_data(DmapType::STRING("".to_string()))? {
@@ -468,6 +479,7 @@ impl RawDmapRead {
         })
     }
 
+    /// Reads a singular value of type data_type starting from cursor position
     fn read_data(&mut self, data_type: DmapType) -> Result<DmapType> {
         if self.cursor.position() > self.cursor.get_ref().len() as u64 {
             return Err(DmapError::Message(
@@ -560,6 +572,10 @@ impl RawDmapRead {
     }
 }
 
+/// Reads from dmap_data and parses into a collection of RawDmapRecord's.
+///
+/// # Failures
+/// If dmap_data cannot be read or contains invalid data.
 pub fn read_records(mut dmap_data: impl Read) -> Result<Vec<RawDmapRecord>> {
     let mut buffer: Vec<u8> = vec![];
 
@@ -579,8 +595,11 @@ pub fn read_records(mut dmap_data: impl Read) -> Result<Vec<RawDmapRecord>> {
     Ok(dmap_read.dmap_records)
 }
 
+/// Writes dmap_records to path as a Vec<u8>
+///
+/// # Failures
+/// If file cannot be created at path or data cannot be written to file.
 pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std::io::Result<()> {
-    // let writer = RawDmapWrite{dmap_records, stream: vec![]};
     let mut stream = vec![];
     for rec in dmap_records {
         stream.append(&mut rec.to_bytes());
