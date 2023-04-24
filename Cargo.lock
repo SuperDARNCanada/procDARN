@@ -7,8 +7,7 @@ name = "backscatter-rs"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "byteorder",
- "byteorder-pack",
+ "itertools",
 ]
 
 [[package]]
@@ -18,16 +17,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17febce684fd15d89027105661fec94afb475cb995fbc59d2865198446ba2eea"
 
 [[package]]
-name = "byteorder"
-version = "1.4.3"
+name = "either"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
+checksum = "7fcaabb2fef8c910e7f4c7ce9f67a1283a1715879a7c230ca9d6d1ae31f16d91"
 
 [[package]]
-name = "byteorder-pack"
-version = "0.1.0"
+name = "itertools"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5fb4e8e759f27018dca1134f174be9e016d9bdbb375541b7330e47ecec9a25c"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
 dependencies = [
- "byteorder",
+ "either",
 ]

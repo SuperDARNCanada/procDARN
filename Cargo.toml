@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.13.1"
-byteorder = "1.4.3"
-byteorder-pack = "0.1.0"
+itertools = "0.10.5"
+#byteorder = "1.4.3"
+#byteorder-pack = "0.1.0"

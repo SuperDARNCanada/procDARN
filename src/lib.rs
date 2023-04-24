@@ -6,6 +6,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
+use crate::DmapType::INT;
 
 type Result<T> = std::result::Result<T, DmapError>;
 
@@ -30,7 +31,7 @@ impl Display for DmapError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub enum DmapType {
     DMAP,
@@ -89,6 +90,23 @@ impl DmapType {
         }
     }
 
+    fn get_key(&self) -> i8 {
+        match self {
+            DmapType::DMAP => 0,
+            DmapType::CHAR(..) => 1,
+            DmapType::SHORT(..) => 2,
+            DmapType::INT(..) => 3,
+            DmapType::FLOAT(..) => 4,
+            DmapType::DOUBLE(..) => 8,
+            DmapType::STRING(..) => 9,
+            DmapType::LONG(..) => 10,
+            DmapType::UCHAR(..) => 16,
+            DmapType::USHORT(..) => 17,
+            DmapType::UINT(..) => 18,
+            DmapType::ULONG(..) => 19,
+        }
+    }
+
     fn to_bytes(&self) -> Vec<u8> {
         match self {
             DmapType::DMAP => vec![],
@@ -131,36 +149,66 @@ impl Display for DmapType {
     }
 }
 
-#[derive(Debug)]
-struct RawDmapScalar {
-    data: DmapType,
-    name: String,
+#[derive(Debug, PartialEq, Clone)]
+pub struct RawDmapScalar {
+    pub data: DmapType,
+    pub name: String,
     mode: i8,
 }
 
 impl RawDmapScalar {
+    fn new(data: DmapType, name: String) -> RawDmapScalar {
+        RawDmapScalar{data, name, mode: 6}
+    }
+
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
-        bytes.append(&mut DmapType::CHAR(self.mode).to_bytes());
+        bytes.append(&mut DmapType::CHAR(self.data.get_key()).to_bytes());
         bytes.append(&mut self.data.to_bytes());
         bytes
     }
 }
 
-#[derive(Debug)]
-struct RawDmapArray {
-    name: String,
+#[derive(Debug, Clone)]
+pub struct RawDmapArray {
+    pub name: String,
     mode: i8,
     _arr_dimensions: Vec<i32>,
-    data: Vec<DmapType>,
+    pub data: Vec<DmapType>,
+}
+
+impl PartialEq for RawDmapArray {
+    fn eq(&self, other: &Self) -> bool {
+        let mut equal = self.name == other.name && self.mode == other.mode;
+        for (d1, d2) in self._arr_dimensions.iter().zip(other._arr_dimensions.iter()) {
+            equal = equal && d1 == d2;
+        }
+        for (a1, a2) in self.data.iter().zip(other.data.iter()) {
+            equal = equal && a1 == a2;
+        }
+        equal
+    }
 }
 
 impl RawDmapArray {
+    fn new(name: String, dimensions: Vec<i32>, data: Vec<DmapType>) -> RawDmapArray {
+        RawDmapArray{name, _arr_dimensions: dimensions, mode: 7, data}
+    }
+
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
-        bytes.append(&mut DmapType::CHAR(self.mode).to_bytes());
+        bytes.append(&mut DmapType::CHAR(self.data[0].get_key()).to_bytes());
+        // bytes.append(&mut INT(self._arr_dimensions.len() as i32).to_bytes());
+        let mut num_dims = 0;
+        let mut dim_bytes = vec![];
+        for dim in self._arr_dimensions.clone() {
+            dim_bytes.append(&mut INT(dim).to_bytes());
+            num_dims += 1;
+        }
+        bytes.append(&mut INT(num_dims).to_bytes());
+        bytes.append(&mut dim_bytes);
         for val in self.data.clone() {
             bytes.append(&mut val.to_bytes());
         }
@@ -168,16 +216,29 @@ impl RawDmapArray {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RawDmapRecord {
-    num_scalars: i32,
-    num_arrays: i32,
-    scalars: Vec<RawDmapScalar>,
-    arrays: Vec<RawDmapArray>,
+    pub num_scalars: i32,
+    pub num_arrays: i32,
+    pub scalars: Vec<RawDmapScalar>,
+    pub arrays: Vec<RawDmapArray>,
+}
+
+impl PartialEq for RawDmapRecord {
+    fn eq(&self, other: &Self) -> bool {
+        let mut equal = self.num_scalars == other.num_scalars && self.num_arrays == other.num_arrays;
+        for (s1, s2) in self.scalars.iter().zip(other.scalars.iter()) {
+            equal = equal && s1 == s2;
+        }
+        for (a1, a2) in self.arrays.iter().zip(other.arrays.iter()) {
+            equal = equal && a1 == a2;
+        }
+        equal
+    }
 }
 
 impl RawDmapRecord {
-    fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut container: Vec<u8> = vec![];
         let code = 65537; // No idea why this is what it is, copied from backscatter
 
@@ -190,9 +251,10 @@ impl RawDmapRecord {
         }
 
         container.append(&mut DmapType::INT(code).to_bytes());
-        container.append(&mut DmapType::INT(data_bytes.len() as i32).to_bytes());
+        container.append(&mut DmapType::INT(data_bytes.len() as i32 + 16).to_bytes());  // +16 for code, length, num_scalars, num_arrays
         container.append(&mut DmapType::INT(self.num_scalars).to_bytes());
         container.append(&mut DmapType::INT(self.num_arrays).to_bytes());
+        container.append(&mut data_bytes);
         container
     }
 }
@@ -200,29 +262,10 @@ impl RawDmapRecord {
 #[derive(Debug)]
 pub struct RawDmapRead {
     cursor: Cursor<Vec<u8>>,
-    pub dmap_records: Vec<RawDmapRecord>,
+    dmap_records: Vec<RawDmapRecord>,
 }
 
 impl RawDmapRead {
-    pub fn new(mut dmap_data: impl Read) -> Result<RawDmapRead> {
-        let mut buffer: Vec<u8> = vec![];
-
-        dmap_data
-            .read_to_end(&mut buffer)
-            .map_err(|_| DmapError::Message("Could not read data".to_string()))?;
-
-        let cursor = Cursor::new(buffer);
-        let mut dmap_read = RawDmapRead {
-            cursor,
-            dmap_records: vec![],
-        };
-
-        while dmap_read.cursor.position() < dmap_read.cursor.get_ref().len() as u64 {
-            dmap_read.parse_record()?;
-        }
-        Ok(dmap_read)
-    }
-
     fn parse_record(&mut self) -> Result<()> {
         let bytes_already_read = self.cursor.position();
         let _code = match self.read_data(DmapType::INT(0))? {
@@ -529,6 +572,25 @@ impl RawDmapRead {
     }
 }
 
+pub fn read_records(mut dmap_data: impl Read) -> Result<Vec<RawDmapRecord>> {
+    let mut buffer: Vec<u8> = vec![];
+
+    dmap_data
+        .read_to_end(&mut buffer)
+        .map_err(|_| DmapError::Message("Could not read data".to_string()))?;
+
+    let cursor = Cursor::new(buffer);
+    let mut dmap_read = RawDmapRead {
+        cursor,
+        dmap_records: vec![],
+    };
+
+    while dmap_read.cursor.position() < dmap_read.cursor.get_ref().len() as u64 {
+        dmap_read.parse_record()?;
+    }
+    Ok(dmap_read.dmap_records)
+}
+
 pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std::io::Result<()> {
     // let writer = RawDmapWrite{dmap_records, stream: vec![]};
     let mut stream = vec![];
@@ -538,4 +600,42 @@ pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std
     let mut file = File::create(path)?;
     file.write_all(&stream)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::DmapType::{CHAR, DMAP};
+    use super::*;
+
+    #[test]
+    fn string_to_bytes() {
+        let s = DmapType::STRING("Test".to_string());
+        assert_eq!(s.to_bytes(), vec![84, 101, 115, 116, 0])
+    }
+
+    #[test]
+    fn scalar_to_bytes() {
+        let scalar = RawDmapScalar::new(DmapType::CHAR(10), "Test".to_string());
+        assert_eq!(scalar.to_bytes(), vec![84, 101, 115, 116, 0, 1, 10])
+    }
+
+    #[test]
+    fn array_to_bytes() {
+        let dimensions = vec![3];
+        let name = "Test".to_string();
+        let data = vec![CHAR(0), CHAR(1), CHAR(2)];
+        let array = RawDmapArray::new(name, dimensions, data);
+        assert_eq!(array.to_bytes(), vec![84, 101, 115, 116, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2])
+    }
+
+    #[test]
+    fn rec_to_bytes() {
+        let num_scalars = 2;
+        let num_arrays = 2;
+        let scalars = vec![];
+        let arrays = vec![];
+
+        let rec = RawDmapRecord {num_scalars, num_arrays, scalars, arrays};
+        assert!(true)
+    }
 }
