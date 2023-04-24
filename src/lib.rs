@@ -1,3 +1,4 @@
+use crate::DmapType::INT;
 use bytemuck;
 use bytemuck::PodCastError;
 use std::error::Error;
@@ -6,7 +7,6 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
-use crate::DmapType::INT;
 
 type Result<T> = std::result::Result<T, DmapError>;
 
@@ -157,10 +157,6 @@ pub struct RawDmapScalar {
 }
 
 impl RawDmapScalar {
-    fn new(data: DmapType, name: String) -> RawDmapScalar {
-        RawDmapScalar{data, name, mode: 6}
-    }
-
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
@@ -174,14 +170,14 @@ impl RawDmapScalar {
 pub struct RawDmapArray {
     pub name: String,
     mode: i8,
-    _arr_dimensions: Vec<i32>,
+    pub dimensions: Vec<i32>,
     pub data: Vec<DmapType>,
 }
 
 impl PartialEq for RawDmapArray {
     fn eq(&self, other: &Self) -> bool {
         let mut equal = self.name == other.name && self.mode == other.mode;
-        for (d1, d2) in self._arr_dimensions.iter().zip(other._arr_dimensions.iter()) {
+        for (d1, d2) in self.dimensions.iter().zip(other.dimensions.iter()) {
             equal = equal && d1 == d2;
         }
         for (a1, a2) in self.data.iter().zip(other.data.iter()) {
@@ -192,23 +188,14 @@ impl PartialEq for RawDmapArray {
 }
 
 impl RawDmapArray {
-    fn new(name: String, dimensions: Vec<i32>, data: Vec<DmapType>) -> RawDmapArray {
-        RawDmapArray{name, _arr_dimensions: dimensions, mode: 7, data}
-    }
-
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.append(&mut DmapType::STRING(self.name.clone()).to_bytes());
         bytes.append(&mut DmapType::CHAR(self.data[0].get_key()).to_bytes());
-        // bytes.append(&mut INT(self._arr_dimensions.len() as i32).to_bytes());
-        let mut num_dims = 0;
-        let mut dim_bytes = vec![];
-        for dim in self._arr_dimensions.clone() {
-            dim_bytes.append(&mut INT(dim).to_bytes());
-            num_dims += 1;
+        bytes.append(&mut INT(self.dimensions.len() as i32).to_bytes());
+        for dim in self.dimensions.clone() {
+            bytes.append(&mut INT(dim).to_bytes());
         }
-        bytes.append(&mut INT(num_dims).to_bytes());
-        bytes.append(&mut dim_bytes);
         for val in self.data.clone() {
             bytes.append(&mut val.to_bytes());
         }
@@ -226,7 +213,8 @@ pub struct RawDmapRecord {
 
 impl PartialEq for RawDmapRecord {
     fn eq(&self, other: &Self) -> bool {
-        let mut equal = self.num_scalars == other.num_scalars && self.num_arrays == other.num_arrays;
+        let mut equal =
+            self.num_scalars == other.num_scalars && self.num_arrays == other.num_arrays;
         for (s1, s2) in self.scalars.iter().zip(other.scalars.iter()) {
             equal = equal && s1 == s2;
         }
@@ -251,7 +239,7 @@ impl RawDmapRecord {
         }
 
         container.append(&mut DmapType::INT(code).to_bytes());
-        container.append(&mut DmapType::INT(data_bytes.len() as i32 + 16).to_bytes());  // +16 for code, length, num_scalars, num_arrays
+        container.append(&mut DmapType::INT(data_bytes.len() as i32 + 16).to_bytes()); // +16 for code, length, num_scalars, num_arrays
         container.append(&mut DmapType::INT(self.num_scalars).to_bytes());
         container.append(&mut DmapType::INT(self.num_arrays).to_bytes());
         container.append(&mut data_bytes);
@@ -475,7 +463,7 @@ impl RawDmapRead {
         Ok(RawDmapArray {
             name,
             mode,
-            _arr_dimensions: dimensions,
+            dimensions,
             data,
         })
     }
@@ -604,13 +592,40 @@ pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std
 
 #[cfg(test)]
 mod tests {
-    use crate::DmapType::{CHAR, DMAP};
     use super::*;
+    use crate::DmapType::CHAR;
+
+    impl RawDmapArray {
+        fn new(name: String, dimensions: Vec<i32>, data: Vec<DmapType>) -> RawDmapArray {
+            RawDmapArray {
+                name,
+                dimensions,
+                mode: 7,
+                data,
+            }
+        }
+    }
+
+    impl RawDmapScalar {
+        fn new(data: DmapType, name: String) -> RawDmapScalar {
+            RawDmapScalar {
+                data,
+                name,
+                mode: 6,
+            }
+        }
+    }
 
     #[test]
     fn string_to_bytes() {
         let s = DmapType::STRING("Test".to_string());
         assert_eq!(s.to_bytes(), vec![84, 101, 115, 116, 0])
+    }
+
+    #[test]
+    fn int_to_bytes() {
+        let i = INT(10);
+        assert_eq!(i.to_bytes(), vec![10, 0, 0, 0]) // little-endian
     }
 
     #[test]
@@ -625,17 +640,9 @@ mod tests {
         let name = "Test".to_string();
         let data = vec![CHAR(0), CHAR(1), CHAR(2)];
         let array = RawDmapArray::new(name, dimensions, data);
-        assert_eq!(array.to_bytes(), vec![84, 101, 115, 116, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2])
-    }
-
-    #[test]
-    fn rec_to_bytes() {
-        let num_scalars = 2;
-        let num_arrays = 2;
-        let scalars = vec![];
-        let arrays = vec![];
-
-        let rec = RawDmapRecord {num_scalars, num_arrays, scalars, arrays};
-        assert!(true)
+        assert_eq!(
+            array.to_bytes(),
+            vec![84, 101, 115, 116, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2]
+        )
     }
 }
