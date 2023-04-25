@@ -8,3 +8,10 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.13.1"
 itertools = "0.10.5"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "backscatter_benchmark"
+harness = false

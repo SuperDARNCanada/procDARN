@@ -616,7 +616,7 @@ pub fn read_records(mut dmap_data: impl Read) -> Result<Vec<RawDmapRecord>> {
 ///
 /// # Failures
 /// If file cannot be created at path or data cannot be written to file.
-pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: Vec<RawDmapRecord>) -> std::io::Result<()> {
+pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: &Vec<RawDmapRecord>) -> std::io::Result<()> {
     let mut stream = vec![];
     for rec in dmap_records {
         stream.append(&mut rec.to_bytes());

@@ -12,5 +12,5 @@ fn main() {
     //     .expect("Test file not found");
     let contents = dmap::read_records(file).unwrap();
 
-    dmap::to_file("tests/test_files/test.iqdat", contents.clone()).unwrap();
+    dmap::to_file("tests/test_files/test.iqdat", &contents).unwrap();
 }
