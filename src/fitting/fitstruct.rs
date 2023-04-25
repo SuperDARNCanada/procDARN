@@ -1,5 +1,3 @@
-
-
 // struct RangeNode {
 //     range: i32,
 //     cross_range_interference: &f64,
@@ -20,16 +18,16 @@ struct PhaseNode {
     phi: f64,
     t: f64,
     std_dev: f64,
-    lag_idx: i32,   // TODO: Is this redundant with Alpha?
-    alpha_2: f64    // TODO: Is this redundant with Alpha?
+    lag_idx: i32, // TODO: Is this redundant with Alpha?
+    alpha_2: f64, // TODO: Is this redundant with Alpha?
 }
 
 struct PowerNode {
     ln_power: f64,
     t: f64,
     std_dev: f64,
-    lag_idx: i32,   // TODO: Is this redundant with Alpha?
-    alpha_2: f64    // TODO: Is this redundant with Alpha?
+    lag_idx: i32, // TODO: Is this redundant with Alpha?
+    alpha_2: f64, // TODO: Is this redundant with Alpha?
 }
 
 struct LagNode {
@@ -42,12 +40,12 @@ struct LagNode {
 
 struct Alpha {
     lag_idx: i32,
-    alpha_2: f64
+    alpha_2: f64,
 }
 
 enum IntfPosition {
     Forward,
-    Behind
+    Behind,
 }
 
 struct FitData<'a> {
@@ -67,7 +65,7 @@ struct FitData<'a> {
     num_pulses: i32,
     beam_num: i32,
     old: i32,
-    lag: &'a[i32; 2],
+    lag: &'a [i32; 2],
     pulse: &'a i32,
     pwr0: &'a f64,
     acfd: Vec<f64>,
@@ -79,7 +77,7 @@ struct FitData<'a> {
     phi_diff: f64,
     time_diff: f64,
     vel_dir: f64,
-    time: Time
+    time: Time,
 }
 
 struct Time {
@@ -104,7 +102,7 @@ struct FittedData<'a> {
     residual_ab: f64,
     quality: f64,
     chi_squared: f64,
-    sums: &'a Sums
+    sums: &'a Sums,
 }
 
 struct Sums {
@@ -112,10 +110,10 @@ struct Sums {
     sum_x: f64,
     sum_y: f64,
     sum_x_squared: f64,
-    sum_y_squared: f64
+    sum_y_squared: f64,
 }
 
 enum FitType {
     Linear,
-    Quadratic
+    Quadratic,
 }

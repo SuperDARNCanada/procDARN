@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use bytemuck;
 use bytemuck::PodCastError;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
@@ -209,6 +209,7 @@ impl RawDmapArray {
     }
 }
 
+#[derive(Debug)]
 pub enum DmapData {
     Scalar(RawDmapScalar),
     Array(RawDmapArray),
