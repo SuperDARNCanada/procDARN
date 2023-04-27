@@ -12,7 +12,6 @@ type Result<T> = std::result::Result<T, DmapError>;
 
 #[derive(Debug, Clone)]
 pub enum DmapError {
-    Parse(String, Vec<u8>),
     BadVal(String, DmapType),
     Message(String),
     CastError(String, PodCastError),
@@ -25,7 +24,6 @@ impl Display for DmapError {
         match self {
             DmapError::Message(msg) => write!(f, "{}", msg),
             DmapError::BadVal(msg, val) => write!(f, "{}: {:?}", msg, val),
-            DmapError::Parse(msg, val) => write!(f, "{}: {:?}", msg, val),
             DmapError::CastError(msg, err) => write!(f, "{}: {}", msg, err.to_string()),
         }
     }
@@ -170,13 +168,13 @@ impl RawDmapScalar {
 }
 
 #[derive(Debug, Clone)]
-pub struct RawDmapArray {
+pub struct RawDmapVector {
     mode: i8,
     pub dimensions: Vec<i32>,
     pub data: Vec<DmapType>,
 }
 
-impl PartialEq for RawDmapArray {
+impl PartialEq for RawDmapVector {
     fn eq(&self, other: &Self) -> bool {
         let mut equal = self.mode == other.mode;
         for (d1, d2) in self.dimensions.iter().zip(other.dimensions.iter()) {
@@ -189,7 +187,7 @@ impl PartialEq for RawDmapArray {
     }
 }
 
-impl RawDmapArray {
+impl RawDmapVector {
     /// Converts into raw bytes
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
@@ -205,38 +203,40 @@ impl RawDmapArray {
     }
 }
 
-#[derive(Debug)]
-pub enum DmapData {
-    Scalar(RawDmapScalar),
-    Array(RawDmapArray),
-}
-
 #[derive(Debug, Clone)]
 pub struct RawDmapRecord {
     pub num_scalars: i32,
-    pub num_arrays: i32,
+    pub num_vectors: i32,
     pub scalar_list: Vec<String>,
-    pub array_list: Vec<String>,
+    pub vector_list: Vec<String>,
     pub scalars: HashMap<String, RawDmapScalar>,
-    pub arrays: HashMap<String, RawDmapArray>,
+    pub vectors: HashMap<String, RawDmapVector>,
 }
 
 impl PartialEq for RawDmapRecord {
     fn eq(&self, other: &Self) -> bool {
-        if !(self.num_scalars == other.num_scalars && self.num_arrays == other.num_arrays) {
-            return false
+        if !(self.num_scalars == other.num_scalars && self.num_vectors == other.num_vectors) {
+            return false;
         }
         for (s1, s2) in self.scalar_list.iter().zip(other.scalar_list.iter()) {
-            if !(s1 == s2) { return false }
+            if !(s1 == s2) {
+                return false;
+            }
             let scal1 = self.scalars.get(s1);
             let scal2 = other.scalars.get(s2);
-            if !(scal1 == scal2) { return false }
+            if !(scal1 == scal2) {
+                return false;
+            }
         }
-        for (a1, a2) in self.array_list.iter().zip(other.array_list.iter()) {
-            if !(a1 == a2) { return false }
-            let arr1 = self.arrays.get(a1);
-            let arr2 = self.arrays.get(a2);
-            if !(arr1 == arr2) { return false }
+        for (a1, a2) in self.vector_list.iter().zip(other.vector_list.iter()) {
+            if !(a1 == a2) {
+                return false;
+            }
+            let arr1 = self.vectors.get(a1);
+            let arr2 = self.vectors.get(a2);
+            if !(arr1 == arr2) {
+                return false;
+            }
         }
         true
     }
@@ -251,44 +251,200 @@ impl RawDmapRecord {
         let mut data_bytes: Vec<u8> = vec![];
         for scalar in &self.scalar_list {
             data_bytes.extend(scalar.as_bytes());
-            data_bytes.push(0);     // null-terminate string
-            data_bytes.extend(self.scalars.get(scalar)
-                .expect(&*format!("{scalar} missing from record"))
-                .to_bytes());
+            data_bytes.push(0); // null-terminate string
+            data_bytes.extend(
+                self.scalars
+                    .get(scalar)
+                    .expect(&*format!("{scalar} missing from record"))
+                    .to_bytes(),
+            );
         }
-        for array in &self.array_list {
-            data_bytes.extend(array.as_bytes());
-            data_bytes.push(0);     // null-terminate string
-            data_bytes.extend(self.arrays.get(array)
-                .expect(&*format!("{array} missing from record"))
-                .to_bytes());
+        for vector in &self.vector_list {
+            data_bytes.extend(vector.as_bytes());
+            data_bytes.push(0); // null-terminate string
+            data_bytes.extend(
+                self.vectors
+                    .get(vector)
+                    .expect(&*format!("{vector} missing from record"))
+                    .to_bytes(),
+            );
         }
 
         container.extend(DmapType::INT(code).to_bytes());
-        container.extend(DmapType::INT(data_bytes.len() as i32 + 16).to_bytes()); // +16 for code, length, num_scalars, num_arrays
+        container.extend(DmapType::INT(data_bytes.len() as i32 + 16).to_bytes()); // +16 for code, length, num_scalars, num_vectors
         container.extend(DmapType::INT(self.num_scalars).to_bytes());
-        container.extend(DmapType::INT(self.num_arrays).to_bytes());
+        container.extend(DmapType::INT(self.num_vectors).to_bytes());
         container.extend(data_bytes);
         container
+    }
+}
+
+/// Trait for types that can be stored in DMAP files
+pub trait InDmap {
+    fn get_inner_value(data: &DmapType) -> Result<Self>
+    where
+        Self: Sized;
+}
+impl InDmap for i8 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::CHAR(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!("cannot interpret {data} as i8")));
+        }
+    }
+}
+impl InDmap for i16 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::SHORT(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as i16"
+            )));
+        }
+    }
+}
+impl InDmap for i32 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::INT(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as i32"
+            )));
+        }
+    }
+}
+impl InDmap for f32 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::FLOAT(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as f32"
+            )));
+        }
+    }
+}
+impl InDmap for f64 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::DOUBLE(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as f64"
+            )));
+        }
+    }
+}
+impl InDmap for String {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::STRING(x) = data {
+            return Ok(x.clone());
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as String"
+            )));
+        }
+    }
+}
+impl InDmap for u8 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::UCHAR(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!("cannot interpret {data} as u8")));
+        }
+    }
+}
+impl InDmap for u16 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::USHORT(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as u16"
+            )));
+        }
+    }
+}
+impl InDmap for u32 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::UINT(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as u32"
+            )));
+        }
+    }
+}
+impl InDmap for i64 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::LONG(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as i64"
+            )));
+        }
+    }
+}
+impl InDmap for u64 {
+    fn get_inner_value(data: &DmapType) -> Result<Self> {
+        if let DmapType::ULONG(x) = data {
+            return Ok(*x);
+        } else {
+            return Err(DmapError::Message(format!(
+                "cannot interpret {data} as u64"
+            )));
+        }
+    }
+}
+
+/// Gets scalar value from record and unwraps into the built-in type
+pub fn get_scalar_val<T: InDmap>(record: &RawDmapRecord, name: &str) -> Result<T> {
+    if let Some(RawDmapScalar { data, mode: _ }) = record.scalars.get(name) {
+        Ok(T::get_inner_value(data)?)
+    } else {
+        Err(DmapError::Message(format!("{} not found", name)))
+    }
+}
+
+/// Gets vector value from record and unwraps into the built-in type
+pub fn get_vector_val<T: InDmap>(record: &RawDmapRecord, name: &str) -> Result<Vec<T>> {
+    if let Some(RawDmapVector {
+        data,
+        mode: _,
+        dimensions: _,
+    }) = record.vectors.get(name)
+    {
+        let arr = data
+            .iter()
+            .map(|x| T::get_inner_value(x).expect(&format!("error getting vector {name}")))
+            .collect();
+        Ok(arr)
+    } else {
+        Err(DmapError::Message(format!("{} not found", name)))
     }
 }
 
 /// Reads a record starting from cursor position
 fn parse_record(cursor: &mut Cursor<Vec<u8>>) -> Result<RawDmapRecord> {
     let bytes_already_read = cursor.position();
-    let _code = match read_data(cursor,DmapType::INT(0))? {
+    let _code = match read_data(cursor, DmapType::INT(0))? {
         DmapType::INT(i) => Ok(i),
         _ => Err(DmapError::Message("PARSE RECORD: Invalid code".to_string())),
     }?;
-    let size = match read_data(cursor,DmapType::INT(0))? {
+    let size = match read_data(cursor, DmapType::INT(0))? {
         DmapType::INT(i) => Ok(i),
         _ => Err(DmapError::Message("PARSE RECORD: Invalid size".to_string())),
     }?;
 
     // adding 8 bytes because code and size are part of the record.
     if size as u64
-        > cursor.get_ref().len() as u64 - cursor.position()
-            + 2 * DmapType::INT(0).get_num_bytes()
+        > cursor.get_ref().len() as u64 - cursor.position() + 2 * DmapType::INT(0).get_num_bytes()
     {
         return Err(DmapError::Message(
             "PARSE RECORD: Integrity check shows record size bigger than \
@@ -309,24 +465,24 @@ fn parse_record(cursor: &mut Cursor<Vec<u8>>) -> Result<RawDmapRecord> {
             "PARSE RECORD: Invalid number of scalars".to_string(),
         )),
     }?;
-    let num_arrays = match read_data(cursor, DmapType::INT(0))? {
+    let num_vectors = match read_data(cursor, DmapType::INT(0))? {
         DmapType::INT(i) => Ok(i),
         _ => Err(DmapError::Message(
-            "PARSE RECORD: Invalid number of arrays".to_string(),
+            "PARSE RECORD: Invalid number of vectors".to_string(),
         )),
     }?;
     if num_scalars <= 0 {
         return Err(DmapError::Message(
-            "PARSE RECORD: Number of scalers is 0 or negative.".to_string(),
+            "PARSE RECORD: Number of scalars is 0 or negative.".to_string(),
         ));
-    } else if num_arrays <= 0 {
+    } else if num_vectors <= 0 {
         return Err(DmapError::Message(
-            "PARSE RECORD: Number of arrays is 0 or negative.".to_string(),
+            "PARSE RECORD: Number of vectors is 0 or negative.".to_string(),
         ));
-    } else if num_scalars + num_arrays > size {
+    } else if num_scalars + num_vectors > size {
         return Err(DmapError::Message(
             "PARSE RECORD: Invalid number of record elements. \
-            Array or scaler field is likely corrupted."
+            Vector or scalar field is likely corrupted."
                 .to_string(),
         ));
     }
@@ -339,12 +495,12 @@ fn parse_record(cursor: &mut Cursor<Vec<u8>>) -> Result<RawDmapRecord> {
         scalars.insert(name, val);
     }
 
-    let mut array_list: Vec<String> = vec![];
-    let mut arrays = HashMap::new();
-    for _ in 0..num_arrays {
-        let (name, val) = parse_array(cursor, size)?;
-        array_list.push(name.clone());
-        arrays.insert(name, val);
+    let mut vector_list: Vec<String> = vec![];
+    let mut vectors = HashMap::new();
+    for _ in 0..num_vectors {
+        let (name, val) = parse_vector(cursor, size)?;
+        vector_list.push(name.clone());
+        vectors.insert(name, val);
     }
 
     if cursor.position() - bytes_already_read != size as u64 {
@@ -358,23 +514,23 @@ fn parse_record(cursor: &mut Cursor<Vec<u8>>) -> Result<RawDmapRecord> {
     Ok(RawDmapRecord {
         num_scalars,
         scalars,
-        num_arrays,
-        arrays,
+        num_vectors,
+        vectors,
         scalar_list,
-        array_list
+        vector_list,
     })
 }
 
 /// Reads a scalar starting from cursor position
 fn parse_scalar(cursor: &mut Cursor<Vec<u8>>) -> Result<(String, RawDmapScalar)> {
     let mode = 6;
-    let name = match read_data(cursor,DmapType::STRING("".to_string()))? {
+    let name = match read_data(cursor, DmapType::STRING("".to_string()))? {
         DmapType::STRING(s) => Ok(s),
         _ => Err(DmapError::Message(
             "PARSE SCALAR: Invalid scalar name".to_string(),
         )),
     }?;
-    let data_type_key = match read_data(cursor,DmapType::CHAR(0))? {
+    let data_type_key = match read_data(cursor, DmapType::CHAR(0))? {
         DmapType::CHAR(c) => Ok(c),
         _ => Err(DmapError::Message(
             "PARSE SCALAR: Invalid data type".to_string(),
@@ -403,25 +559,25 @@ fn parse_scalar(cursor: &mut Cursor<Vec<u8>>) -> Result<(String, RawDmapScalar)>
     Ok((name, RawDmapScalar { data, mode }))
 }
 
-/// Reads an array starting from cursor position
-fn parse_array(cursor: &mut Cursor<Vec<u8>>, record_size: i32) -> Result<(String, RawDmapArray)> {
+/// Reads an vector starting from cursor position
+fn parse_vector(cursor: &mut Cursor<Vec<u8>>, record_size: i32) -> Result<(String, RawDmapVector)> {
     let mode = 7;
-    let name = match read_data(cursor,DmapType::STRING("".to_string()))? {
+    let name = match read_data(cursor, DmapType::STRING("".to_string()))? {
         DmapType::STRING(s) => Ok(s),
         _ => Err(DmapError::Message(
-            "PARSE ARRAY: Invalid array name".to_string(),
+            "PARSE VECTOR: Invalid vector name".to_string(),
         )),
     }?;
-    let data_type_key = match read_data(cursor,DmapType::CHAR(0))? {
+    let data_type_key = match read_data(cursor, DmapType::CHAR(0))? {
         DmapType::CHAR(c) => Ok(c),
         _ => Err(DmapError::Message(
-            "PARSE ARRAY: Invalid data type".to_string(),
+            "PARSE VECTOR: Invalid data type".to_string(),
         )),
     }?;
 
     if !DmapType::all_keys().contains(&data_type_key) {
         return Err(DmapError::Message(
-            "PARSE ARRAY: Data type is corrupted. Record is likely \
+            "PARSE VECTOR: Data type is corrupted. Record is likely \
             corrupted"
                 .to_string(),
         ));
@@ -429,22 +585,22 @@ fn parse_array(cursor: &mut Cursor<Vec<u8>>, record_size: i32) -> Result<(String
 
     let data_type = DmapType::get_type_from_key(data_type_key)?;
 
-    let array_dimension = match read_data(cursor, DmapType::INT(0))? {
+    let vector_dimension = match read_data(cursor, DmapType::INT(0))? {
         DmapType::INT(i) => Ok(i),
         _ => Err(DmapError::Message(
-            "PARSE ARRAY: Invalid array dimension".to_string(),
+            "PARSE VECTOR: Invalid vector dimension".to_string(),
         )),
     }?;
 
-    if array_dimension > record_size {
+    if vector_dimension > record_size {
         return Err(DmapError::Message(
-            "PARSE ARRAY: Parsed # of array dimensions are larger \
+            "PARSE VECTOR: Parsed # of vector dimensions are larger \
             than record size. Record is likely corrupted"
                 .to_string(),
         ));
-    } else if array_dimension <= 0 {
+    } else if vector_dimension <= 0 {
         return Err(DmapError::Message(
-            "PARSE ARRAY: Parsed # of array dimensions are zero or \
+            "PARSE VECTOR: Parsed # of vector dimensions are zero or \
             negative. Record is likely corrupted"
                 .to_string(),
         ));
@@ -452,22 +608,22 @@ fn parse_array(cursor: &mut Cursor<Vec<u8>>, record_size: i32) -> Result<(String
 
     let mut dimensions: Vec<i32> = vec![];
     let mut total_elements = 1;
-    for _ in 0..array_dimension {
-        let dim = match read_data(cursor,DmapType::INT(0))? {
+    for _ in 0..vector_dimension {
+        let dim = match read_data(cursor, DmapType::INT(0))? {
             DmapType::INT(val) => Ok(val),
             _ => Err(DmapError::Message(
-                "PARSE ARRAY: Array dimensions could not be parsed".to_string(),
+                "PARSE VECTOR: Vector dimensions could not be parsed".to_string(),
             )),
         }?;
         if dim <= 0 {
             return Err(DmapError::Message(
-                "PARSE ARRAY: Array dimension is zero or negative. \
+                "PARSE VECTOR: Vector dimension is zero or negative. \
                 Record is likely corrupted"
                     .to_string(),
             ));
         } else if dim > record_size {
             return Err(DmapError::Message(
-                "PARSE ARRAY: Array dimension exceeds record size".to_string(),
+                "PARSE VECTOR: Vector dimension exceeds record size".to_string(),
             ));
         }
         dimensions.push(dim);
@@ -476,20 +632,27 @@ fn parse_array(cursor: &mut Cursor<Vec<u8>>, record_size: i32) -> Result<(String
 
     if total_elements > record_size {
         return Err(DmapError::Message(
-            "PARSE ARRAY: Total array elements > record size.".to_string(),
+            "PARSE VECTOR: Total vector elements > record size.".to_string(),
         ));
     } else if total_elements * data_type.get_num_bytes() as i32 > record_size {
         return Err(DmapError::Message(
-            "PARSE ARRAY: Array size exceeds record size. Data is \
+            "PARSE VECTOR: Vector size exceeds record size. Data is \
             likely corrupted"
                 .to_string(),
         ));
     }
     let mut data = vec![];
     for _ in 0..total_elements {
-        data.push(read_data(cursor,data_type.clone())?);
+        data.push(read_data(cursor, data_type.clone())?);
     }
-    Ok((name, RawDmapArray { mode, dimensions, data, }))
+    Ok((
+        name,
+        RawDmapVector {
+            mode,
+            dimensions,
+            data,
+        },
+    ))
 }
 
 /// Reads a singular value of type data_type starting from cursor position
@@ -623,9 +786,9 @@ pub fn to_file<P: AsRef<Path>>(path: P, dmap_records: &Vec<RawDmapRecord>) -> st
 mod tests {
     use super::*;
 
-    impl RawDmapArray {
-        fn new(dimensions: Vec<i32>, data: Vec<DmapType>) -> RawDmapArray {
-            RawDmapArray {
+    impl RawDmapVector {
+        fn new(dimensions: Vec<i32>, data: Vec<DmapType>) -> RawDmapVector {
+            RawDmapVector {
                 dimensions,
                 mode: 7,
                 data,
@@ -635,10 +798,7 @@ mod tests {
 
     impl RawDmapScalar {
         fn new(data: DmapType) -> RawDmapScalar {
-            RawDmapScalar {
-                data,
-                mode: 6,
-            }
+            RawDmapScalar { data, mode: 6 }
         }
     }
 
@@ -661,14 +821,11 @@ mod tests {
     }
 
     #[test]
-    fn array_to_bytes() {
+    fn vector_to_bytes() {
         let dimensions = vec![3];
         let data = vec![DmapType::CHAR(0), DmapType::CHAR(1), DmapType::CHAR(2)];
-        let array = RawDmapArray::new(dimensions, data);
-        assert_eq!(
-            array.to_bytes(),
-            vec![1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2]
-        )
+        let vector = RawDmapVector::new(dimensions, data);
+        assert_eq!(vector.to_bytes(), vec![1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2])
     }
 
     #[test]
@@ -679,15 +836,56 @@ mod tests {
 
         let dimensions = vec![3];
         let data = vec![DmapType::CHAR(0), DmapType::CHAR(1), DmapType::CHAR(2)];
-        let array = RawDmapArray::new(dimensions, data);
-        let mut arrays = HashMap::new();
-        arrays.insert("arr".to_string(), array);
+        let vector = RawDmapVector::new(dimensions, data);
+        let mut vectors = HashMap::new();
+        vectors.insert("arr".to_string(), vector);
 
-        let rec = RawDmapRecord {num_scalars: 1, num_arrays: 1, scalar_list: vec!["scal".to_string()], array_list: vec!["arr".to_string()], scalars, arrays };
+        let rec = RawDmapRecord {
+            num_scalars: 1,
+            num_vectors: 1,
+            scalar_list: vec!["scal".to_string()],
+            vector_list: vec!["arr".to_string()],
+            scalars,
+            vectors,
+        };
 
         assert_eq!(
             rec.to_bytes(),
-            vec![1, 0, 1, 0, 39, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 115, 99, 97, 108, 0, 1, 10, 97, 114, 114, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2]
+            vec![
+                1, 0, 1, 0, 39, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 115, 99, 97, 108, 0, 1, 10, 97,
+                114, 114, 0, 1, 1, 0, 0, 0, 3, 0, 0, 0, 0, 1, 2
+            ]
         )
+    }
+
+    #[test]
+    fn record_get_values() {
+        let scalar = RawDmapScalar::new(DmapType::CHAR(10));
+        let mut scalars = HashMap::new();
+        scalars.insert("scal".to_string(), scalar);
+
+        let dimensions = vec![3];
+        let data = vec![DmapType::CHAR(0), DmapType::CHAR(1), DmapType::CHAR(2)];
+        let vector = RawDmapVector::new(dimensions, data);
+        let mut vectors = HashMap::new();
+        vectors.insert("arr".to_string(), vector);
+
+        let rec = RawDmapRecord {
+            num_scalars: 1,
+            num_vectors: 1,
+            scalar_list: vec!["scal".to_string()],
+            vector_list: vec!["arr".to_string()],
+            scalars,
+            vectors,
+        };
+
+        assert_eq!(
+            10,
+            get_scalar_val::<i8>(&rec, "scal").expect("Unable to recover scalar")
+        );
+        assert_eq!(
+            vec![0, 1, 2],
+            get_vector_val::<i8>(&rec, "arr").expect("Unable to recover vector")
+        );
     }
 }
