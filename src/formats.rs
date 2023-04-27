@@ -72,7 +72,7 @@ pub struct Rawacf {
     lag_zero_power: Vec<f32>,
     range_list: Vec<i16>,
     acfs: Vec<f32>,
-    xcfs: Vec<f32>,
+    xcfs: Option<Vec<f32>>,
 }
 
 impl Rawacf {
@@ -134,7 +134,7 @@ impl Rawacf {
         let lag_zero_power = get_vector_val::<f32>(record, "pwr0")?;
         let range_list = get_vector_val::<i16>(record, "slist")?;
         let acfs = get_vector_val::<f32>(record, "acfd")?;
-        let xcfs = get_vector_val::<f32>(record, "xcfs")?;
+        let xcfs = get_vector_val::<f32>(record, "xcfs").ok();
 
         Ok(Rawacf {
             radar_revision_major,
