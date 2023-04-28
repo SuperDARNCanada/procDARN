@@ -1,5 +1,5 @@
-use backscatter_rs::dmap;
-use backscatter_rs::dmap::RawDmapRecord;
+use dmap;
+use dmap::RawDmapRecord;
 use backscatter_rs::formats::{FitacfRecord, RawacfRecord};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::fs::File;

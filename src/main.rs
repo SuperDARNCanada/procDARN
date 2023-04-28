@@ -1,5 +1,5 @@
-mod dmap;
-use crate::dmap::{read_records, to_file};
+
+use dmap::{read_records, to_file};
 mod fitting;
 use std::fs::File;
 // use std::io::Read;

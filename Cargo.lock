@@ -31,6 +31,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "criterion",
+ "dmap",
  "itertools",
 ]
 
@@ -189,6 +190,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c063cd8cc95f5c377ed0d4b49a4b21f632396ff690e8470c29b3359b346984b"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "dmap"
+version = "0.1.0"
+source = "git+https://github.com/SuperDARNCanada/dmap.git#59698ddd89f412bfec1db3f222515ddbae73f936"
+dependencies = [
+ "bytemuck",
+ "itertools",
 ]
 
 [[package]]

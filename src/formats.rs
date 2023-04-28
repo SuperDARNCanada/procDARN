@@ -1,4 +1,4 @@
-use crate::dmap::{get_scalar_val, get_vector_val, DmapError, RawDmapRecord};
+use dmap::{get_scalar_val, get_vector_val, DmapError, RawDmapRecord};
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
