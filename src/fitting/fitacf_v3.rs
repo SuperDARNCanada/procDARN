@@ -1,4 +1,4 @@
-use crate::dmap::DmapData;
+use crate::formats::{RawacfRecord, FitacfRecord};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -33,73 +33,26 @@ impl Display for Fitacf3Error {
 }
 
 /// Creates the lag table based on the data.
-fn create_lag_list(record_hash: HashMap<String, DmapData>) -> Result<Vec<[i32; 2]>> {
-    let num_lags = match record_hash.get("mplgs") {
-        Some(x) => match x {
-            DmapData::Scalar(y) => Ok(y),
-            DmapData::Array(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Scalar type expected for mplgs, got array instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup(
-            "mplgs not found in record".to_string(),
-        )),
-    }?;
-    let pulse_table = match record_hash.get("ptab") {
-        Some(x) => match x {
-            DmapData::Array(y) => Ok(y),
-            DmapData::Scalar(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Array type expected for ptab, got scalar instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup("ptab not found in record".to_string())),
-    }?;
-    let num_pulses = match record_hash.get("mppul") {
-        Some(x) => match x {
-            DmapData::Scalar(y) => Ok(y),
-            DmapData::Array(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Scalar type expected for mppul, got array instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup(
-            "mppul not found in record".to_string(),
-        )),
-    }?;
-    let lag_table = match record_hash.get("ltab") {
-        Some(x) => match x {
-            DmapData::Scalar(y) => Ok(y),
-            DmapData::Array(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Array type expected for ltab, got scalar instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup("ltab not found in record".to_string())),
-    }?;
-    let multi_pulse_increment = match record_hash.get("mpinc") {
-        Some(x) => match x {
-            DmapData::Scalar(y) => Ok(y),
-            DmapData::Array(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Scalar type expected for mpinc, got array instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup(
-            "mpinc not found in record".to_string(),
-        )),
-    }?;
-    let sample_separation = match record_hash.get("smsep") {
-        Some(x) => match x {
-            DmapData::Scalar(y) => Ok(y),
-            DmapData::Array(..) => Err(Fitacf3Error::Mismatch {
-                msg: "Scalar type expected for smsep, got array instead".to_string(),
-            }),
-        },
-        None => Err(Fitacf3Error::Lookup(
-            "smsep not found in record".to_string(),
-        )),
-    }?;
+fn create_lag_list(record: RawacfRecord) -> Result<Vec<[i32; 2]>> {
+    let lag_table = record.lag_table;
+    let pulse_table = record.pulse_table;
+    let multi_pulse_increment = record.multi_pulse_increment;
+    let sample_separation = record.sample_separation;
 
     let mut lags = vec![];
-    for i in 0..num_lags.data {
-        let number = lag_table[i][1] - lag_table[i][0];
+    for i in 0..record.num_lags as usize {
+        let number = lag_table[2*i + 1] - lag_table[2*i];   // flattened, we want row i, cols 1 and 0
+        for j in 0..record.num_pulses as usize {
+            if lag_table[2*i] == pulse_table[j] {
+                let pulse_1_idx = j;
+            }
+            if lag_table[2*i + 1] == pulse_table[j] {
+                let pulse_2_idx = j;
+            }
+        }
+        let sample_base_1 = lag_table[2*i] * (multi_pulse_increment / sample_separation);
+        let sample_base_2 = lag_table[2*i + 1] * (multi_pulse_increment / sample_separation);
+        let pulses = lag_table[i];
     }
-    Ok(vec![])
+    Ok(lags)
 }
