@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.13.1"
 itertools = "0.10.5"
-dmap = { git = "https://github.com/SuperDARNCanada/dmap.git" }
+dmap = { git = "https://github.com/SuperDARNCanada/dmap.git", branch = "develop" }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

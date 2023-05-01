@@ -195,7 +195,7 @@ dependencies = [
 [[package]]
 name = "dmap"
 version = "0.1.0"
-source = "git+https://github.com/SuperDARNCanada/dmap.git#59698ddd89f412bfec1db3f222515ddbae73f936"
+source = "git+https://github.com/SuperDARNCanada/dmap.git?branch=develop#f5240aad3ba9f6a8606ca522fe78f19d2a5d31b4"
 dependencies = [
  "bytemuck",
  "itertools",
