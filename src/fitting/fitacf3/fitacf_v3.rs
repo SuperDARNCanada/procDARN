@@ -1,10 +1,10 @@
-use crate::fitting::fitstruct::{Alpha, LagNode, RangeNode};
+use crate::fitting::fitacf3::fitstruct::{Alpha, LagNode, RangeNode};
 use dmap::formats::{RawacfRecord, FitacfRecord};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
-use crate::fitting::fitacf3::fitstruct::LagNode;
+use crate::fitting::fitacf3::least_squares::LeastSquares;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
@@ -81,18 +81,26 @@ fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     for i in 0..record.range_list.data.len() {
         let range_num = record.range_list.data[i];
         if record.lag_zero_power.data[range_num as usize] != 0.0 {
-            range_list.push(RangeNode::new(i, range_num, record, lags))
+            range_list.push(RangeNode::new(i as i32, range_num as i32, record, lags))
         }
     }
+    acf_power_fitting(range_list);
     Err(Fitacf3Error::Message(format!("Unable to fit record")))
 }
 
-fn calculate_alpha_at_lags(lag: LagNode, range: RangeNode, lag_zero_power: f64) -> Alpha {
-    let pulse_i_cri = range.cross_range_interference[lag.pulses[0] as usize];
-    let pulse_j_cri = range.cross_range_interference[lag.pulses[1] as usize];
+// fn calculate_alpha_at_lags(lag: LagNode, range: RangeNode, lag_zero_power: f64) -> Alpha {
+//     let pulse_i_cri = range.cross_range_interference[lag.pulses[0] as usize];
+//     let pulse_j_cri = range.cross_range_interference[lag.pulses[1] as usize];
+//
+//     let lag_idx = lag.lag_idx;
+//     let alpha_2 = lag_zero_power*lag_zero_power / ((lag_zero_power + pulse_i_cri) * (lag_zero_power + pulse_j_cri));
+//     // let range.alpha_2 = alpha_2;
+//
+// }
 
-    let lag_idx = lag.lag_idx;
-    let alpha_2 = lag_zero_power*lag_zero_power / ((lag_zero_power + pulse_i_cri) * (lag_zero_power + pulse_j_cri));
-    // let range.alpha_2 = alpha_2;
+fn acf_power_fitting(ranges: Vec<RangeNode>) {
+    let mut lsq = LeastSquares::new(1, 1);
 
+    for range in ranges {
+    }
 }

@@ -1,4 +1,5 @@
 use dmap::formats::{RawacfRecord};
+use is_close::is_close;
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 
 pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
@@ -130,7 +131,7 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, mut ranges: Vec<RangeNode>, noise_pow
             let power_value = range.powers[0].ln_power;
             let mut all_equal = true;
             for pwr in range.powers {
-                if !isclose!(pwr.ln_power, power_value) { all_equal = false; }
+                if !is_close!(pwr.ln_power, power_value) { all_equal = false; }
             }
             if all_equal { bad_indices.push(idx); }
         }

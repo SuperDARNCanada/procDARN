@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 bytemuck = "1.13.1"
+is_close = "0.1.3"
 itertools = "0.10.5"
 dmap = { git = "https://github.com/SuperDARNCanada/dmap.git", branch = "develop" }
 
