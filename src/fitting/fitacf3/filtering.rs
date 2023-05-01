@@ -2,7 +2,7 @@ use dmap::formats::{RawacfRecord};
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 
 pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
-    let pulses_in_us: Vec<i16> = rec.pulse_table.data
+    let mut pulses_in_us: Vec<i16> = rec.pulse_table.data
         .iter()
         .map(|p| p * rec.multi_pulse_increment)
         .collect();
@@ -52,10 +52,10 @@ pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
 
 pub fn filter_tx_overlapped_lags(rec: &RawacfRecord, lags: Vec<LagNode>, ranges: Vec<RangeNode>) {
     let bad_samples = mark_bad_samples(rec);
-    for range_node in ranges {
-        let bad_indices = vec![];
+    for mut range_node in ranges {
+        let mut bad_indices = vec![];
         for idx in 0..lags.len() {
-            let lag = lags[idx];
+            let lag = &lags[idx];
             let sample_1 = lag.sample_base_1 + range_node.range_num;
             let sample_2 = lag.sample_base_2 + range_node.range_num;
             if bad_samples.contains(&sample_1) || bad_samples.contains(&sample_2) {
@@ -74,7 +74,7 @@ pub fn filter_tx_overlapped_lags(rec: &RawacfRecord, lags: Vec<LagNode>, ranges:
 
 pub fn filter_infinite_lags(ranges: Vec<RangeNode>) {
     for range in ranges {
-        let infinite_indices = vec![];
+        let mut infinite_indices = vec![];
         for i in 0..range.powers.len() {
             if !range.powers[i].ln_power.is_finite() {
                 infinite_indices.push(i);
@@ -87,12 +87,12 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: Vec<RangeNode>) {
     if rec.num_averages <= 0 {
         return
     }
-    for range in ranges {
+    for mut range in ranges {
         let range_num = range.range_num;
         if range.powers.len() == 0 { continue }
-        let log_sigma_fluc = (FLUCTUATION_CUTOFF_COEFFICIENT * rec.lag_zero_power / ((2 * rec.num_averages) as f32).sqrt()).ln();
-        let bad_indices = vec![];
-        let cutoff_lag = rec.num_lags as usize + 1;
+        let log_sigma_fluc = (FLUCTUATION_CUTOFF_COEFFICIENT * &rec.lag_zero_power / ((2 * rec.num_averages) as f32).sqrt()).ln();
+        let mut bad_indices = vec![];
+        let mut cutoff_lag = rec.num_lags as usize + 1;
 
         for idx in 0..range.powers.len() {
             if idx > cutoff_lag as usize {
@@ -113,14 +113,14 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: Vec<RangeNode>) {
     }
 }
 
-pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: Vec<RangeNode>, noise_power: f32) {
+pub fn filter_bad_acfs(rec: &RawacfRecord, mut ranges: Vec<RangeNode>, noise_power: f32) {
     if rec.num_averages <= 0 {
         return
     }
     let cutoff_power = noise_power * 2.0;
-    let bad_indices = vec![];
+    let mut bad_indices = vec![];
     for idx in 0..ranges.len() {
-        let range = ranges[idx];
+        let range = &ranges[idx];
         let range_num = range.range_num as usize;
         let power = rec.lag_zero_power.data[range_num];
         let num_powers = range.powers.len();
@@ -128,7 +128,7 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: Vec<RangeNode>, noise_power: 
             bad_indices.push(idx);
         } else {
             let power_value = range.powers[0].ln_power;
-            let all_equal = true;
+            let mut all_equal = true;
             for pwr in range.powers {
                 if !isclose!(pwr.ln_power, power_value) { all_equal = false; }
             }
@@ -141,10 +141,10 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: Vec<RangeNode>, noise_power: 
     }
 }
 
-pub fn filter_bad_fits(ranges: Vec<RangeNode>) {
-    let bad_indices = vec![];
+pub fn filter_bad_fits(mut ranges: Vec<RangeNode>) {
+    let mut bad_indices = vec![];
     for idx in 0..ranges.len() {
-        let range = ranges[idx];
+        let range = &ranges[idx];
         if (range.phase_fit.b == 0.0) ||
             (range.lin_pwr_fit.b == 0.0) ||
             (range.quad_pwr_fit.b == 0.0) {

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Display;
+use crate::fitting::fitacf3::fitstruct::LagNode;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
@@ -34,28 +35,37 @@ impl Display for Fitacf3Error {
 }
 
 /// Creates the lag table based on the data.
-fn create_lag_list(record: &RawacfRecord) -> Result<Vec<[i32; 2]>> {
-    let lag_table = record.lag_table;
-    let pulse_table = record.pulse_table;
+fn create_lag_list(record: &RawacfRecord) -> Vec<LagNode> {
+    let lag_table = &record.lag_table;
+    let pulse_table = &record.pulse_table;
     let multi_pulse_increment = record.multi_pulse_increment;
     let sample_separation = record.sample_separation;
 
     let mut lags = vec![];
     for i in 0..record.num_lags as usize {
+        let mut pulse_1_idx = 0;
+        let mut pulse_2_idx = 0;
         let number = lag_table.data[2*i + 1] - lag_table.data[2*i];   // flattened, we want row i, cols 1 and 0
         for j in 0..record.num_pulses as usize {
             if lag_table.data[2*i] == pulse_table.data[j] {
-                let pulse_1_idx = j;
+                pulse_1_idx = j;
             }
             if lag_table.data[2*i + 1] == pulse_table.data[j] {
-                let pulse_2_idx = j;
+                pulse_2_idx = j;
             }
         }
-        let sample_base_1 = lag_table.data[2*i] * (multi_pulse_increment / sample_separation);
-        let sample_base_2 = lag_table.data[2*i + 1] * (multi_pulse_increment / sample_separation);
+        let sample_base_1= (lag_table.data[2*i] * (multi_pulse_increment / sample_separation)) as i32;
+        let sample_base_2 = (lag_table.data[2*i + 1] * (multi_pulse_increment / sample_separation)) as i32;
         let pulses = lag_table.data[i];
+        lags.push(LagNode {
+            lag_num: number as i32,
+            pulses: [pulse_1_idx, pulse_2_idx],
+            lag_idx: 0,
+            sample_base_1,
+            sample_base_2,
+        });
     }
-    Ok(lags)
+    lags
 }
 
 fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {

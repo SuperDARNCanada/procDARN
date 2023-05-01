@@ -1,5 +1,6 @@
 use std::slice::range;
 use dmap::formats::RawacfRecord;
+use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 
 pub struct RangeNode {
     pub range_num: i32,
@@ -18,10 +19,12 @@ pub struct RangeNode {
     pub elev_fit: FittedData,
 }
 impl RangeNode {
-    pub fn new(index: i32, range_num: i32, record: &RawacfRecord, lags: Vec<[i32; 2]>) -> RangeNode {
+    pub fn new(index: i32, range_num: i32, record: &RawacfRecord, lags: Vec<LagNode>) -> RangeNode {
         let cross_range_interference = RangeNode::calculate_cross_range_interference(range_num as i16, record);
-        let alpha_2 = calculate_alpha_2();
-        let phases = Phase
+        let alpha_2 = RangeNode::calculate_alphas(range_num, cross_range_interference, record, &lags);
+        let phases = PhaseNode::new(record, "acfd", &lags, index);
+        let elevations = PhaseNode::new(record, "xcfd", &lags, index);
+        let powers = PowerNode::new();
         RangeNode {
             range_idx: index,
             range_num,
@@ -39,10 +42,10 @@ impl RangeNode {
 
         let interference_for_pulses = vec![];
         for pulse_to_check in 0..rec.num_pulses as usize {
-            let total_interference = 0.0;
+            let mut total_interference = 0.0;
             for pulse in 0..rec.num_pulses as usize {
                 let pulse_diff = rec.pulse_table.data[pulse_to_check] - rec.pulse_table.data[pulse];
-                let range_to_check = (pulse_diff * tau + range_num) as usize;
+                let range_to_check = (pulse_diff * tau + range_num as i16) as usize;
                 if (pulse != pulse_to_check) &&
                     (0 <= range_to_check) &&
                     (range_to_check < rec.num_ranges as usize) {
@@ -53,24 +56,49 @@ impl RangeNode {
         }
         interference_for_pulses
     }
-    fn calculate_alphas(range_num: i32, cross_range_interference: Vec<f32>, rec: &RawacfRecord, lags: Vec<LagNode>) {
-        let alpha_2 = vec![];
+    fn calculate_alphas(range_num: i32, cross_range_interference: Vec<f32>, rec: &RawacfRecord, lags: &Vec<LagNode>) -> Vec<f32>{
+        let mut alpha_2 = vec![];
         for idx in 0..lags.len() {
-            let lag = lags[idx];
+            let lag = &lags[idx];
             let pulse_1_interference = cross_range_interference[lag.pulses[0] as usize];
             let pulse_2_interference = cross_range_interference[lag.pulses[1] as usize];
             let lag_zero_power = rec.lag_zero_power.data[range_num as usize];
-            alpha_2.push(lag_zero_power*lag_zero_power / (()))
+            alpha_2.push(lag_zero_power*lag_zero_power / ((lag_zero_power + pulse_1_interference) * (lag_zero_power + pulse_2_interference)));
         }
+        alpha_2
     }
 }
 
 struct PhaseNode {
-    pub phi: f64,
-    pub t: f64,
-    pub std_dev: f64,
-    pub lag_idx: i32, // TODO: Is this redundant with Alpha?
-    pub alpha_2: f64, // TODO: Is this redundant with Alpha?
+    pub phases: Vec<f64>,
+    pub t: Vec<f64>,
+    pub std_dev: Vec<f64>,
+    pub lag_idx: Option<i32>, // TODO: Is this redundant with Alpha?
+    pub alpha_2: Option<f64>, // TODO: Is this redundant with Alpha?
+}
+impl PhaseNode {
+    pub fn new(rec: &RawacfRecord, phase_type: &str, lags: &Vec<LagNode>, range_idx: i32) -> Result<PhaseNode, Fitacf3Error> {
+        let acfd = match phase_type {
+            "acfd" => &rec.acfs.data,
+            "xcfd" => match &rec.xcfs {
+                Some(x) => &x.data,
+                _ => Err(Fitacf3Error::Message(format!("Cannot find xcfs in data")))?
+            }
+            _ => Err(Fitacf3Error::Message(format!("Unknown type for PhaseNode: {}", phase_type)))?
+        };
+        let start_idx = (range_idx * 2 * rec.num_lags as i32) as usize;
+        let end_idx = start_idx + 2 * rec.num_lags as usize;
+        let phases = acfd[start_idx..end_idx].chunks_exact(2).map(|x| (x[1] as f64).atan2(x[0] as f64)).collect();
+        let t = lags.iter().map(|x| (x.lag_num * rec.multi_pulse_increment as i32) as f64 * 1.0e-6).collect();
+        let std_dev = (0..rec.num_lags).map(|_| 0.0).collect();
+        Ok(PhaseNode {
+            phases,
+            t,
+            std_dev,
+            lag_idx: None,
+            alpha_2: None
+        })
+    }
 }
 
 struct PowerNode {
@@ -80,10 +108,25 @@ struct PowerNode {
     pub lag_idx: i32, // TODO: Is this redundant with Alpha?
     pub alpha_2: f64, // TODO: Is this redundant with Alpha?
 }
+impl PowerNode {
+    pub fn new(rec: &RawacfRecord, lags: &Vec<LagNode>, range_idx: i32, range_num: i32) -> PowerNode {
+        let start_idx = (range_idx * 2 * rec.num_lags as i32) as usize;
+        let end_idx = start_idx + 2 * rec.num_lags as usize;
+        let powers: Vec<f64> = rec.acfs.data[start_idx..end_idx].chunks_exact(2).map(|x| {
+            let real = x[0] as f64;
+            let imag = x[1] as f64;
+            (real*real + imag*imag).sqrt()
+        }).collect();
+        let normalized_power: Vec<f64> = powers.iter().map(|x| {
+            x*x / (rec.lag_zero_power.data[range_num as usize] as f64 * rec.lag_zero_power.data[range_num as usize] as f64)
+        }).collect();
+        let inverse_alpha_2 = alpha_2.iter().map(|x| 1 / x).collect();
+    }
+}
 
 pub struct LagNode {
     pub lag_num: i32,
-    pub pulses: [i32; 2],
+    pub pulses: [usize; 2],
     pub lag_idx: i32,
     pub sample_base_1: i32,
     pub sample_base_2: i32,
