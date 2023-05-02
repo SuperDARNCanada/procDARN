@@ -1,38 +1,48 @@
-use std::slice::range;
 use std::iter::zip;
 use dmap::formats::RawacfRecord;
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 
 pub struct RangeNode {
-    pub range_num: i32,
-    pub range_idx: i32,
+    pub range_num: usize,
+    pub range_idx: usize,
     pub cross_range_interference: Vec<f64>,
     pub refractive_idx: f32,
-    pub alpha_2: Vec<Alpha>,
+    pub alpha_2: Vec<f64>,
     pub phases: PhaseNode,
     pub powers: PowerNode,
-    pub elev: Vec<f32>,
-    pub lin_pwr_fit: FittedData,
-    pub quad_pwr_fit: FittedData,
-    pub lin_pwr_fit_err: FittedData,
-    pub quad_pwr_fit_err: FittedData,
-    pub phase_fit: FittedData,
-    pub elev_fit: FittedData,
+    pub elev: PhaseNode,
+    pub lin_pwr_fit: Option<FittedData>,
+    pub quad_pwr_fit: Option<FittedData>,
+    pub lin_pwr_fit_err: Option<FittedData>,
+    pub quad_pwr_fit_err: Option<FittedData>,
+    pub phase_fit: Option<FittedData>,
+    pub elev_fit: Option<FittedData>,
 }
 impl RangeNode {
-    pub fn new(index: i32, range_num: i32, record: &RawacfRecord, lags: Vec<LagNode>) -> RangeNode {
-        let cross_range_interference = RangeNode::calculate_cross_range_interference(range_num as i16, record);
-        let alpha_2 = RangeNode::calculate_alphas(range_num, cross_range_interference, record, &lags);
-        let phases = PhaseNode::new(record, "acfd", &lags, index);
-        let elevations = PhaseNode::new(record, "xcfd", &lags, index);
+    pub fn new(index: usize, range_num: usize, record: &RawacfRecord, lags: &Vec<LagNode>) -> Result<RangeNode, Fitacf3Error> {
+        let cross_range_interference = RangeNode::calculate_cross_range_interference(range_num, record);
+        let alpha_2 = RangeNode::calculate_alphas(range_num, &cross_range_interference, record, &lags);
+        let phases = PhaseNode::new(record, "acfd", &lags, index)?;
+        let elevations = PhaseNode::new(record, "xcfd", &lags, index)?;
         let powers = PowerNode::new(record, &lags, index, range_num);
-        RangeNode {
+        Ok(RangeNode {
             range_idx: index,
             range_num,
-
-        }
+            cross_range_interference,
+            refractive_idx: 1.0,
+            alpha_2,
+            phases,
+            powers,
+            elev: elevations,
+            lin_pwr_fit: None,
+            quad_pwr_fit: None,
+            lin_pwr_fit_err: None,
+            quad_pwr_fit_err: None,
+            phase_fit: None,
+            elev_fit: None
+        })
     }
-    fn calculate_cross_range_interference(range_num: i32, rec: &RawacfRecord) -> Vec<f32> {
+    fn calculate_cross_range_interference(range_num: usize, rec: &RawacfRecord) -> Vec<f64> {
         let tau: i16;
         if rec.sample_separation != 0 {
             tau = rec.multi_pulse_increment / rec.sample_separation;
@@ -41,29 +51,29 @@ impl RangeNode {
             tau = rec.multi_pulse_increment / rec.tx_pulse_length;
         }
 
-        let interference_for_pulses = vec![];
+        let interference_for_pulses: Vec<f64> = vec![];
         for pulse_to_check in 0..rec.num_pulses as usize {
-            let mut total_interference = 0.0;
+            let mut total_interference: f64 = 0.0;
             for pulse in 0..rec.num_pulses as usize {
                 let pulse_diff = rec.pulse_table.data[pulse_to_check] - rec.pulse_table.data[pulse];
                 let range_to_check = (pulse_diff * tau + range_num as i16) as usize;
                 if (pulse != pulse_to_check) &&
                     (0 <= range_to_check) &&
                     (range_to_check < rec.num_ranges as usize) {
-                    total_interference += rec.lag_zero_power.data[range_to_check];
+                    total_interference += rec.lag_zero_power.data[range_to_check] as f64;
                 }
             }
             interference_for_pulses[pulse_to_check] = total_interference;
         }
         interference_for_pulses
     }
-    fn calculate_alphas(range_num: i32, cross_range_interference: Vec<f32>, rec: &RawacfRecord, lags: &Vec<LagNode>) -> Vec<f32>{
-        let mut alpha_2 = vec![];
+    fn calculate_alphas(range_num: usize, cross_range_interference: &Vec<f64>, rec: &RawacfRecord, lags: &Vec<LagNode>) -> Vec<f64>{
+        let mut alpha_2: Vec<f64> = vec![];
         for idx in 0..lags.len() {
             let lag = &lags[idx];
             let pulse_1_interference = cross_range_interference[lag.pulses[0] as usize];
             let pulse_2_interference = cross_range_interference[lag.pulses[1] as usize];
-            let lag_zero_power = rec.lag_zero_power.data[range_num as usize];
+            let lag_zero_power = rec.lag_zero_power.data[range_num] as f64;
             alpha_2.push(lag_zero_power*lag_zero_power / ((lag_zero_power + pulse_1_interference) * (lag_zero_power + pulse_2_interference)));
         }
         alpha_2
@@ -78,7 +88,7 @@ struct PhaseNode {
     pub alpha_2: Option<f64>, // TODO: Is this redundant with Alpha?
 }
 impl PhaseNode {
-    pub fn new(rec: &RawacfRecord, phase_type: &str, lags: &Vec<LagNode>, range_idx: i32) -> Result<PhaseNode, Fitacf3Error> {
+    pub fn new(rec: &RawacfRecord, phase_type: &str, lags: &Vec<LagNode>, range_idx: usize) -> Result<PhaseNode, Fitacf3Error> {
         let acfd = match phase_type {
             "acfd" => &rec.acfs.data,
             "xcfd" => match &rec.xcfs {
@@ -87,7 +97,7 @@ impl PhaseNode {
             }
             _ => Err(Fitacf3Error::Message(format!("Unknown type for PhaseNode: {}", phase_type)))?
         };
-        let start_idx = (range_idx * 2 * rec.num_lags as i32) as usize;
+        let start_idx = range_idx * 2 * rec.num_lags as usize;
         let end_idx = start_idx + 2 * rec.num_lags as usize;
         let phases = acfd[start_idx..end_idx].chunks_exact(2).map(|x| (x[1] as f64).atan2(x[0] as f64)).collect();
         let t = lags.iter().map(|x| (x.lag_num * rec.multi_pulse_increment as i32) as f64 * 1.0e-6).collect();
@@ -110,10 +120,10 @@ struct PowerNode {
     pub alpha_2: f64, // TODO: Is this redundant with Alpha?
 }
 impl PowerNode {
-    pub fn new(rec: &RawacfRecord, lags: &Vec<LagNode>, range_idx: i32, range_num: i32) -> PowerNode {
-        let pwr_0 = rec.lag_zero_power.data[range_num as usize] as f64;
+    pub fn new(rec: &RawacfRecord, lags: &Vec<LagNode>, range_idx: usize, range_num: usize) -> PowerNode {
+        let pwr_0 = rec.lag_zero_power.data[range_num] as f64;
         // acfs stores as [num_ranges, num_lags, 2] in memory, with 2 corresponding to real, imag
-        let start_idx = (range_idx * 2 * rec.num_lags as i32) as usize;
+        let start_idx = range_idx * 2 * rec.num_lags as usize;
         let end_idx = start_idx + 2 * rec.num_lags as usize;
         let powers: Vec<f64> = rec.acfs.data[start_idx..end_idx].chunks_exact(2).map(|x| {
             let real = x[0] as f64;
@@ -201,27 +211,29 @@ struct Time {
     us: i32,
 }
 
-struct FittedData {
+#[derive(Default)]
+pub struct FittedData {
     pub delta: f64,
-    pub a: f64,
-    pub b: f64,
-    pub variance_a: f64,
-    pub variance_b: f64,
-    pub delta_a: f64,
-    pub delta_b: f64,
-    pub covariance_ab: f64,
-    pub residual_ab: f64,
+    pub intercept: f64,
+    pub slope: f64,
+    pub variance_intercept: f64,
+    pub variance_slope: f64,
+    pub delta_intercept: f64,
+    pub delta_slope: f64,
+    pub covariance_intercept_slope: f64,
+    pub residual_intercept_slope: f64,
     pub quality: f64,
     pub chi_squared: f64,
-    pub sums: Sums,
+    // pub sums: Sums,
 }
 
-struct Sums {
-    sum: f64,
-    sum_x: f64,
-    sum_y: f64,
-    sum_x_squared: f64,
-    sum_y_squared: f64,
+#[derive(Default)]
+pub struct Sums {
+    pub sum: f64,
+    pub sum_x: f64,
+    pub sum_y: f64,
+    pub sum_xx: f64,
+    pub sum_xy: f64,
 }
 
 pub enum FitType {

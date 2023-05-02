@@ -1,5 +1,6 @@
 use dmap::formats::{RawacfRecord};
 use is_close::is_close;
+use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 
 pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
@@ -142,13 +143,16 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, mut ranges: Vec<RangeNode>, noise_pow
     }
 }
 
-pub fn filter_bad_fits(mut ranges: Vec<RangeNode>) {
+pub fn filter_bad_fits(mut ranges: &Vec<RangeNode>) -> Result<(), Fitacf3Error> {
     let mut bad_indices = vec![];
     for idx in 0..ranges.len() {
         let range = &ranges[idx];
-        if (range.phase_fit.b == 0.0) ||
-            (range.lin_pwr_fit.b == 0.0) ||
-            (range.quad_pwr_fit.b == 0.0) {
+        if (range.phase_fit.ok_or_else(||
+            Fitacf3Error::Message(format!("Cannot filter fits since phase not fit")))?.slope == 0.0) ||
+            (range.lin_pwr_fit.ok_or_else(||
+                Fitacf3Error::Message(format!("Cannot filter fits since power not linearly fit")))?.slope == 0.0) ||
+            (range.quad_pwr_fit.ok_or_else(||
+                Fitacf3Error::Message(format!("Cannot filter fits since power not quadratically fit")))?.slope == 0.0) {
             bad_indices.push(idx);
         }
     }
@@ -156,4 +160,5 @@ pub fn filter_bad_fits(mut ranges: Vec<RangeNode>) {
     for idx in bad_indices.iter().rev() {
         ranges.remove(*idx);
     }
+    Ok(())
 }
