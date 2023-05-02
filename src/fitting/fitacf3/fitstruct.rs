@@ -24,7 +24,7 @@ impl RangeNode {
         let alpha_2 = RangeNode::calculate_alphas(range_num, &cross_range_interference, record, &lags);
         let phases = PhaseNode::new(record, "acfd", &lags, index)?;
         let elevations = PhaseNode::new(record, "xcfd", &lags, index)?;
-        let powers = PowerNode::new(record, &lags, index, range_num);
+        let powers = PowerNode::new(record, &lags, index, range_num, &alpha_2);
         Ok(RangeNode {
             range_idx: index,
             range_num,
@@ -84,8 +84,6 @@ struct PhaseNode {
     pub phases: Vec<f64>,
     pub t: Vec<f64>,
     pub std_dev: Vec<f64>,
-    pub lag_idx: Option<i32>, // TODO: Is this redundant with Alpha?
-    pub alpha_2: Option<f64>, // TODO: Is this redundant with Alpha?
 }
 impl PhaseNode {
     pub fn new(rec: &RawacfRecord, phase_type: &str, lags: &Vec<LagNode>, range_idx: usize) -> Result<PhaseNode, Fitacf3Error> {
@@ -106,8 +104,6 @@ impl PhaseNode {
             phases,
             t,
             std_dev,
-            lag_idx: None,
-            alpha_2: None
         })
     }
 }
@@ -116,11 +112,9 @@ struct PowerNode {
     pub ln_power: Vec<f64>,
     pub t: Vec<f64>,
     pub std_dev: Vec<f64>,
-    pub lag_idx: i32, // TODO: Is this redundant with Alpha?
-    pub alpha_2: f64, // TODO: Is this redundant with Alpha?
 }
 impl PowerNode {
-    pub fn new(rec: &RawacfRecord, lags: &Vec<LagNode>, range_idx: usize, range_num: usize) -> PowerNode {
+    pub fn new(rec: &RawacfRecord, lags: &Vec<LagNode>, range_idx: usize, range_num: usize, alpha_2: &Vec<f64>) -> PowerNode {
         let pwr_0 = rec.lag_zero_power.data[range_num] as f64;
         // acfs stores as [num_ranges, num_lags, 2] in memory, with 2 corresponding to real, imag
         let start_idx = range_idx * 2 * rec.num_lags as usize;
@@ -133,20 +127,18 @@ impl PowerNode {
         let normalized_power: Vec<f64> = powers.iter().map(|x| {
             x*x / (pwr_0 * pwr_0)
         }).collect();
-        let inverse_alpha_2 = alpha_2.iter().map(|x| 1 / x).collect();
+        // let inverse_alpha_2 = alpha_2.iter().map(|x| 1 / x).collect();
 
         let sigmas: Vec<f64> = zip(
             zip(powers.iter(), normalized_power.iter()),
-            inverse_alpha_2.iter())
-            .map(|((pwr, pwr_norm), alpha_inv)| pwr_0 * ((pwr_norm + alpha_inv)/(2 * rec.num_averages)).sqrt())
+            alpha_2.iter())
+            .map(|((pwr, pwr_norm), alpha)| pwr_0 * ((pwr_norm + 1.0 / alpha)/(2.0 * rec.num_averages as f64)).sqrt())
             .collect();
         let t = lags.iter().map(|x| (x.lag_num * rec.multi_pulse_increment as i32) as f64 * 1.0e-6).collect();
         PowerNode {
             ln_power: powers.iter().map(|x| x.ln()).collect(),
             t,
             std_dev: sigmas,
-            alpha_2,
-            lag_idx
         }
     }
 }
