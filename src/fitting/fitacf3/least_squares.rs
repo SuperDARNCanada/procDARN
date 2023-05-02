@@ -1,25 +1,5 @@
 use crate::fitting::fitacf3::fitstruct::{FittedData, FitType, Sums};
 
-// #[derive(Default)]
-// pub struct LeastSquaresValues {
-//     pub sum: f64,
-//     pub sum_x: f64,
-//     pub sum_y: f64,
-//     pub sum_xx: f64,
-//     pub sum_xy: f64,
-//     pub delta: f64,
-//     pub intercept: f64,
-//     pub slope: f64,
-//     pub sigma_squared_intercept: f64,
-//     pub sigma_squared_slope: f64,
-//     pub delta_intercept: f64,
-//     pub delta_slope: f64,
-//     pub covariance_slope_intercept: f64,
-//     pub residual_slope_intercept: f64,
-//     pub q_factor: f64,
-//     pub chi_squared: f64
-// }
-
 pub struct LeastSquares {
     pub delta_chi_2: [[f64; 2]; 6],
     pub confidence: usize,

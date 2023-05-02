@@ -151,57 +151,57 @@ pub struct LagNode {
     pub sample_base_2: i32,
 }
 
-pub struct Alpha {
-    lag_idx: i32,
-    pub alpha_2: f64,
-}
+// pub struct Alpha {
+//     lag_idx: i32,
+//     pub alpha_2: f64,
+// }
 
-enum IntfPosition {
-    Forward,
-    Behind,
-}
+// enum IntfPosition {
+//     Forward,
+//     Behind,
+// }
 
-pub struct FitData {
-    pub channel: i32,
-    pub offset: i32, /* used for stereo badlags */
-    pub cp: i32,
-    pub xcf_flag: i32,
-    pub transmit_freq: i32,
-    pub noise: f32,
-    pub num_ranges: i32,
-    pub sample_sep: i32,
-    pub num_avg: i32,
-    pub num_lags: i32,
-    pub multi_pulse_increment: i32,
-    pub tx_pulse_len: i32,
-    pub lag_to_first_range: i32,
-    pub num_pulses: i32,
-    pub beam_num: i32,
-    pub old: i32,
-    pub lag: [i32; 2],
-    pub pulse: i32,
-    pub pwr0: f64,
-    pub acfd: Vec<f64>,
-    pub xcfd: Vec<f64>,
-    pub maxbeam: i32,
-    pub beam_offset: f64,
-    pub beam_sep: f64,
-    pub interferometer_offset: [f64; 3],
-    pub phi_diff: f64,
-    pub time_diff: f64,
-    pub vel_dir: f64,
-    pub time: Time,
-}
+// pub struct FitData {
+//     pub channel: i32,
+//     pub offset: i32, /* used for stereo badlags */
+//     pub cp: i32,
+//     pub xcf_flag: i32,
+//     pub transmit_freq: i32,
+//     pub noise: f32,
+//     pub num_ranges: i32,
+//     pub sample_sep: i32,
+//     pub num_avg: i32,
+//     pub num_lags: i32,
+//     pub multi_pulse_increment: i32,
+//     pub tx_pulse_len: i32,
+//     pub lag_to_first_range: i32,
+//     pub num_pulses: i32,
+//     pub beam_num: i32,
+//     pub old: i32,
+//     pub lag: [i32; 2],
+//     pub pulse: i32,
+//     pub pwr0: f64,
+//     pub acfd: Vec<f64>,
+//     pub xcfd: Vec<f64>,
+//     pub maxbeam: i32,
+//     pub beam_offset: f64,
+//     pub beam_sep: f64,
+//     pub interferometer_offset: [f64; 3],
+//     pub phi_diff: f64,
+//     pub time_diff: f64,
+//     pub vel_dir: f64,
+//     pub time: Time,
+// }
 
-struct Time {
-    yr: i16,
-    mo: i16,
-    dy: i16,
-    hr: i16,
-    mt: i16,
-    sc: i16,
-    us: i32,
-}
+// struct Time {
+//     yr: i16,
+//     mo: i16,
+//     dy: i16,
+//     hr: i16,
+//     mt: i16,
+//     sc: i16,
+//     us: i32,
+// }
 
 #[derive(Default)]
 pub struct FittedData {
