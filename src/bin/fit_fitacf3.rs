@@ -29,24 +29,6 @@ struct Args {
 }
 
 fn bin_main() -> BinResult<()> {
-    // let matches = Command::new(clap::crate_name!())
-    //     .version(clap::crate_version!())
-    //     .arg_required_else_help(true)
-    //     .arg(Arg::new("infile")
-    //         .long("infile")
-    //         .short('i')
-    //         .help("Rawacf file to fit")
-    //         .num_args(1)
-    //         .value_parser(value_parser!(PathBuf))
-    //         .required(true))
-    //     .arg(Arg::new("outfile")
-    //         .long("outfile")
-    //         .short('o')
-    //         .help("Output fitacf file")
-    //         .num_args(1)
-    //         .value_parser(value_parser!(PathBuf))
-    //         .required(true))
-    //     .get_matches_from(wild::args_os());
     let args = Args::parse();
 
     let rawacf = File::open(args.infile)?;
