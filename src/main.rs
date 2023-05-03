@@ -1,12 +1,14 @@
-
-use dmap::formats::{DmapRecord, RawacfRecord, FitacfRecord, to_file};
+use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
+mod error;
 mod fitting;
+mod hdw;
 use std::fs::File;
 // use std::io::Read;
 use std::path::Path;
 
 fn main() {
-    let file = File::open("tests/test_files/20210607.1801.00.cly.a.rawacf").expect("Test file not found");
+    let file =
+        File::open("tests/test_files/20210607.1801.00.cly.a.rawacf").expect("Test file not found");
     // let file = File::open(Path::new("tests/test_files/20160316.1945.01.rkn.iqdat"))
     //     .expect("Test file not found");
     // let file = File::open(Path::new("tests/test_files/20110214.map"))
