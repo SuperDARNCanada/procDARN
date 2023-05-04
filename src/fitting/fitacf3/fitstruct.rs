@@ -2,6 +2,7 @@ use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use dmap::formats::RawacfRecord;
 use std::iter::zip;
 
+#[derive(Debug)]
 pub struct RangeNode {
     pub range_num: usize,
     pub range_idx: usize,
@@ -94,6 +95,7 @@ impl RangeNode {
     }
 }
 
+#[derive(Debug)]
 pub struct PhaseNode {
     pub phases: Vec<f64>,
     pub t: Vec<f64>,
@@ -137,6 +139,7 @@ impl PhaseNode {
     }
 }
 
+#[derive(Debug)]
 pub struct PowerNode {
     pub ln_power: Vec<f64>,
     pub t: Vec<f64>,
@@ -186,6 +189,7 @@ impl PowerNode {
     }
 }
 
+#[derive(Debug)]
 pub struct LagNode {
     pub lag_num: i32,
     pub pulses: [usize; 2],
@@ -194,7 +198,7 @@ pub struct LagNode {
     pub sample_base_2: i32,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FittedData {
     pub delta: f64,
     pub intercept: f64,
@@ -209,7 +213,7 @@ pub struct FittedData {
     pub chi_squared: f64,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Sums {
     pub sum: f64,
     pub sum_x: f64,

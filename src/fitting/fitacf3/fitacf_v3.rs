@@ -1,4 +1,3 @@
-use crate::fitting::fitacf3::filtering::{filter_bad_fits, filter_tx_overlapped_lags};
 use crate::fitting::fitacf3::fitstruct::{FitType, LagNode, RangeNode};
 use crate::fitting::fitacf3::least_squares::LeastSquares;
 use crate::hdw::hdw::HdwInfo;
@@ -88,7 +87,6 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     } else {
         noise_power = acf_cutoff_power(record);
     }
-
     let mut range_list = vec![];
     for i in 0..record.range_list.data.len() {
         let range_num = record.range_list.data[i];
@@ -104,13 +102,14 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     calculate_phase_and_elev_sigmas(&mut range_list, record)?;
     acf_phase_unwrap(&mut range_list);
     acf_phase_fitting(&mut range_list)?;
-    filter_bad_fits(&mut range_list)?;
+    filtering::filter_bad_fits(&mut range_list)?;
     xcf_phase_unwrap(&mut range_list)?;
     xcf_phase_fitting(&mut range_list)?;
 
     determinations(record, range_list, noise_power)
 }
 
+/// Passing
 fn cutoff_power_correction(rec: &RawacfRecord) -> f64 {
     let std_dev = 1.0 / (rec.num_averages as f64).sqrt();
 
@@ -133,6 +132,7 @@ fn cutoff_power_correction(rec: &RawacfRecord) -> f64 {
     cumulative_pdf / cumulative_pdf_x_norm_power
 }
 
+/// Calculates the minimum power value for ACFs in the record (passing)
 fn acf_cutoff_power(rec: &RawacfRecord) -> f32 {
     let mut sorted_power_levels = rec.lag_zero_power.data.clone();
     sorted_power_levels.sort_by(|a, b| a.total_cmp(&b)); // sort floats
@@ -230,7 +230,6 @@ fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &RawacfReco
     for mut range in ranges {
         let inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
         // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
-        println!("{:?}", inverse_alpha_2);
         let pwr_values: Vec<f64> = range
             .phases
             .t
@@ -238,11 +237,9 @@ fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &RawacfReco
             .map(|t| (-1.0 * range.lin_pwr_fit.as_ref().unwrap().slope.abs() * t).exp())
             .collect();
         let inverse_pwr_squared: Vec<f64> = pwr_values.iter().map(|x| 1.0 / (x * x)).collect();
-        println!("{:?}", inverse_pwr_squared);
         let phase_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
             .map(|(x, y)| x * y - 1.0)
             .collect();
-        println!("{:?}", phase_numerator);
         // let elev_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
         //     .map(|(x, y)| x * y - 1.0)
         //     .collect();
@@ -403,7 +400,7 @@ fn determinations(
 ) -> Result<FitacfRecord> {
     let file_datetime = NaiveDateTime::parse_from_str(
         format!(
-            "{}{}{} {}:{}:{}",
+            "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
             rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
         )
         .as_str(),

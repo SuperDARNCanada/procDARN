@@ -5,6 +5,7 @@ use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 use dmap::formats::RawacfRecord;
 use is_close::is_close;
 
+/// passing
 pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
     let mut pulses_in_us: Vec<i32> = rec
         .pulse_table
@@ -50,6 +51,7 @@ pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
     bad_samples
 }
 
+/// passing
 pub fn filter_tx_overlapped_lags(
     rec: &RawacfRecord,
     lags: Vec<LagNode>,
@@ -66,7 +68,6 @@ pub fn filter_tx_overlapped_lags(
                 bad_indices.push(idx);
             }
         }
-        println!("Tx overlapped indices for range {}: {:?}", range_node.range_num, bad_indices);
         for i in bad_indices.iter().rev() {
             range_node.powers.remove(*i);
             range_node.phases.remove(*i);
@@ -76,6 +77,7 @@ pub fn filter_tx_overlapped_lags(
     }
 }
 
+/// passing
 pub fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
     for range in ranges {
         let mut infinite_indices = vec![];
@@ -84,7 +86,6 @@ pub fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
                 infinite_indices.push(i);
             }
         }
-        println!("Infinite indices for range {}: {:?}", range.range_num, infinite_indices);
         for i in infinite_indices.iter().rev() {
             range.powers.remove(*i);
             range.phases.remove(*i);
@@ -94,6 +95,7 @@ pub fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// passing
 pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
     if rec.num_averages <= 0 {
         return;
@@ -125,7 +127,6 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
                 }
             }
         }
-        println!("Low power indices for range {}: {:?}", range.range_num, bad_indices);
 
         for i in bad_indices.iter().rev() {
             range.powers.remove(*i);
@@ -136,6 +137,7 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// passing
 pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>, noise_power: f32) {
     if rec.num_averages <= 0 {
         return;

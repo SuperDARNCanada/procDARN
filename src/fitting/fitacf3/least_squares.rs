@@ -1,5 +1,6 @@
 use crate::fitting::fitacf3::fitstruct::{FitType, FittedData, Sums};
 
+#[derive(Debug)]
 pub struct LeastSquares {
     pub delta_chi_2: [[f64; 2]; 6],
     pub confidence: usize,
@@ -30,7 +31,6 @@ impl LeastSquares {
     ) -> FittedData {
         let mut fitted: FittedData = Default::default();
         let sums = Self::find_sums(x_vals, y_vals, sigmas, &fit_type);
-
         fitted.delta = sums.sum * sums.sum_xx - sums.sum_x * sums.sum_x;
         fitted.intercept = (sums.sum_xx * sums.sum_y - sums.sum_x * sums.sum_xy) / fitted.delta;
         fitted.slope = (sums.sum * sums.sum_xy - sums.sum_x * sums.sum_y) / fitted.delta;
@@ -42,7 +42,8 @@ impl LeastSquares {
         let delta_chi_2 = self.delta_chi_2[self.confidence][self.degrees_of_freedom];
         fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();
         fitted.delta_slope = delta_chi_2.sqrt() * fitted.variance_slope.sqrt();
-        Self::calculate_chi_2(&mut fitted, x_vals, y_vals, sigmas, &fit_type);
+        fitted.chi_squared =
+            Self::calculate_chi_2(&mut fitted, x_vals, y_vals, sigmas, &fit_type);
         fitted
     }
     pub fn one_parameter_line_fit(
@@ -59,10 +60,12 @@ impl LeastSquares {
 
         let delta_chi_2 = self.delta_chi_2[self.confidence][self.degrees_of_freedom];
         fitted.delta_slope = delta_chi_2.sqrt() * fitted.variance_slope.sqrt();
+        fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();
         fitted.chi_squared =
             Self::calculate_chi_2(&mut fitted, x_vals, y_vals, sigmas, &FitType::Linear);
         fitted
     }
+    /// passing
     fn find_sums(
         x_vals: &Vec<f64>,
         y_vals: &Vec<f64>,
@@ -93,7 +96,7 @@ impl LeastSquares {
                     sum_x += x_vals[orig] / sigma_squared[new];
                     sum_y += y_vals[orig] / sigma_squared[new];
                     sum_xx += x_vals[orig] * x_vals[orig] / sigma_squared[new];
-                    sum_xy += y_vals[orig] * y_vals[orig] / sigma_squared[new];
+                    sum_xy += x_vals[orig] * y_vals[orig] / sigma_squared[new];
                 }
             }
             FitType::Quadratic => {

@@ -14,7 +14,7 @@ itertools = "0.10.5"
 dmap = { git = "https://github.com/SuperDARNCanada/dmap.git", branch = "develop" }
 
 [build-dependencies]
-git2 = "0.17.1"
+git2 =  "0.17.1"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

@@ -75,9 +75,9 @@ impl HdwInfo {
             19 => "zho",
             _ => Err(BackscatterError::new("Invalid station id"))?,
         };
-        let hdw_dir = env::var_os("OUT_DIR").unwrap();
-        let hdw_file = format!("{:?}/hdw/hdw.dat.{}", hdw_dir, site_name);
-
+        let raw_hdw_dir = env::var_os("HDW_DIR").unwrap();
+        let mut hdw_dir = raw_hdw_dir.to_str().unwrap();
+        let hdw_file = format!("{}hdw.dat.{}", hdw_dir, site_name);
         let mut hdw_params: Vec<HdwInfo> = vec![];
         let file =
             File::open(hdw_file).map_err(|_| BackscatterError::new("Unable to open hdw file"))?;
@@ -86,8 +86,7 @@ impl HdwInfo {
             let line =
                 line.map_err(|_| BackscatterError::new("Unable to read line from hdw file"))?;
             if !line.starts_with('#') {
-                let elements: Vec<&str> = line.split(' ').collect();
-
+                let elements: Vec<&str> = line.split_whitespace().collect();
                 let date = elements[2];
                 let time = elements[3];
                 let validity_date = NaiveDateTime::parse_from_str(
