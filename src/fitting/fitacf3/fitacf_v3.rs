@@ -106,7 +106,19 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     xcf_phase_unwrap(&mut range_list)?;
     xcf_phase_fitting(&mut range_list)?;
 
-    determinations(record, range_list, noise_power)
+    let dets = determinations(record, range_list, noise_power);
+    let printable = dets.clone()?;
+    println!("linear power: {:?}\nlinear power error {:?}\n sigma power: {:?}\n sigma power error: {:?}",
+             printable.lambda_power,
+             printable.lambda_power_error,
+            printable.sigma_power,
+    printable.sigma_power_error);
+    println!("linear spec wid: {:?}\nlinear spec wid error {:?}\n sigma spec wid: {:?}\n sigma spec wid error: {:?}",
+             printable.lambda_spectral_width,
+             printable.lambda_spectral_width_error,
+            printable.sigma_spectral_width,
+    printable.sigma_spectral_width_error);
+    dets
 }
 
 /// Passing
@@ -226,9 +238,10 @@ fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
+/// passing
 fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &RawacfRecord) -> Result<()> {
     for mut range in ranges {
-        let inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
+        let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
         // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
         let pwr_values: Vec<f64> = range
             .phases
@@ -624,7 +637,7 @@ fn determinations(
             })
             .collect();
         let quadratic_width_conversion: f32 =
-            299792458.0 * (2.0 as f32).sqrt() / (PI_f32 * rec.tx_freq as f32 * 1000.0);
+            299792458.0 * (2.0 as f32).ln().sqrt() / (PI_f32 * rec.tx_freq as f32 * 1000.0);
         let spectral_width_quadratic: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -633,6 +646,7 @@ fn determinations(
                     .expect("Unable to make fitacf quadratic spectral width without fitted power")
                     .slope as f32)
                     .abs()
+                    .sqrt()
                     * quadratic_width_conversion
             })
             .collect();
@@ -700,7 +714,7 @@ fn determinations(
                 (r.elev_fit
                     .as_ref()
                     .expect("Unable to make fitacf xcf_phi0_err")
-                    .chi_squared as f32)
+                    .variance_intercept as f32)
                     .sqrt()
             })
             .collect();

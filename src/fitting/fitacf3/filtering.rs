@@ -72,7 +72,8 @@ pub fn filter_tx_overlapped_lags(
             range_node.powers.remove(*i);
             range_node.phases.remove(*i);
             range_node.elev.remove(*i);
-            range_node.alpha_2.remove(*i);
+            range_node.power_alpha_2.remove(*i);
+            range_node.phase_alpha_2.remove(*i);
         }
     }
 }
@@ -88,9 +89,7 @@ pub fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
         }
         for i in infinite_indices.iter().rev() {
             range.powers.remove(*i);
-            range.phases.remove(*i);
-            range.elev.remove(*i);
-            range.alpha_2.remove(*i);
+            range.power_alpha_2.remove(*i);
         }
     }
 }
@@ -117,7 +116,7 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
                 bad_indices.push(idx);
             } else {
                 let log_power = range.powers.ln_power[idx];
-                let alpha_2 = range.alpha_2[idx];
+                let alpha_2 = range.power_alpha_2[idx];
                 if ((1 as f64 / alpha_2.sqrt()) <= ALPHA_CUTOFF as f64)
                     && ((log_power < log_sigma_fluc as f64)
                         || is_close!(log_power, log_sigma_fluc as f64))
@@ -127,12 +126,13 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
                 }
             }
         }
+        println!("Range {} bad lags {:?}", range.range_num, bad_indices);
 
         for i in bad_indices.iter().rev() {
             range.powers.remove(*i);
-            range.phases.remove(*i);
-            range.elev.remove(*i);
-            range.alpha_2.remove(*i);
+            // range.phases.remove(*i);
+            // range.elev.remove(*i);
+            range.power_alpha_2.remove(*i);
         }
     }
 }
@@ -169,6 +169,7 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>, noise_po
     }
 }
 
+/// presumed passing
 pub fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> {
     let mut bad_indices = vec![];
     for idx in 0..ranges.len() {
