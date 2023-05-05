@@ -95,18 +95,11 @@ pub fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &Rawacf
         let phase_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
             .map(|(x, y)| x * y - 1.0)
             .collect();
-        // let elev_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
-        //     .map(|(x, y)| x * y - 1.0)
-        //     .collect();
         let denominator = 2.0 * rec.num_averages as f64;
         let mut phase_sigmas: Vec<f64> = phase_numerator
             .iter()
             .map(|x| (x / denominator).sqrt())
             .collect();
-        // let elev_sigmas: Vec<f64> = elev_numerator
-        //     .iter()
-        //     .map(|x| (x/denominator).sqrt())
-        //     .collect();
         let _check: Vec<&f64> = phase_sigmas
             .iter()
             .filter(|&x| !x.is_finite())
@@ -117,15 +110,6 @@ pub fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &Rawacf
                 range.range_idx
             )))?
         }
-        // let _check: Vec<&f64> = elev_sigmas
-        //     .iter()
-        //     .filter(|&x| (x.is_infinite() || x.is_nan()))
-        //     .collect();
-        // if _check.len() > 0 {
-        //     Err(Fitacf3Error::Message(format!("Elevation sigmas bad at range {}", range.range_idx)))?
-        // }
-
-        // elev_sigmas[0] = elev_sigmas[1];
         range.phases.std_dev = phase_sigmas.clone();
         // Since lag 0 phase is included for elevation fit, set lag 0 sigma the same as lag 1 sigma
         phase_sigmas[0] = phase_sigmas[1];
