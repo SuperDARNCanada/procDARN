@@ -66,7 +66,6 @@ fn create_lag_list(record: &RawacfRecord) -> Vec<LagNode> {
             (lag_table.data[2 * i] * (multi_pulse_increment / sample_separation)) as i32;
         let sample_base_2 =
             (lag_table.data[2 * i + 1] * (multi_pulse_increment / sample_separation)) as i32;
-        let pulses = lag_table.data[i];
         lags.push(LagNode {
             lag_num: number as i32,
             pulses: [pulse_1_idx, pulse_2_idx],
@@ -108,17 +107,6 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     xcf_phase_fitting(&mut range_list)?;
 
     let dets = determinations(record, range_list, noise_power);
-    let printable = dets.clone()?;
-    // println!("linear power: {:?}\nlinear power error {:?}\n sigma power: {:?}\n sigma power error: {:?}",
-    //          printable.lambda_power,
-    //          printable.lambda_power_error,
-    //          printable.sigma_power,
-    //          printable.sigma_power_error);
-    println!("linear spec wid: {:?}\nlinear spec wid error {:?}\n sigma spec wid: {:?}\n sigma spec wid error: {:?}",
-             printable.lag_zero_phi,
-             printable.lag_zero_phi_error,
-             printable.sigma_spectral_width,
-             printable.sigma_spectral_width_error);
     dets
 }
 
@@ -169,6 +157,7 @@ fn acf_cutoff_power(rec: &RawacfRecord) -> f32 {
     min_power as f32
 }
 
+/// passing
 fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
 
@@ -203,6 +192,7 @@ fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
+/// passing
 fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for mut range in ranges {
@@ -221,6 +211,7 @@ fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
+/// passing
 fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for mut range in ranges {
@@ -395,6 +386,7 @@ fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
+/// passing
 fn phase_correction(slope_estimate: f64, phases: &Vec<f64>, times: &Vec<f64>) -> (Vec<f64>, i32) {
     let phase_predicted: Vec<f64> = times.iter().map(|t| t * slope_estimate).collect();
 
@@ -438,7 +430,6 @@ fn determinations(
             }
         })
         .collect();
-
     if range_list.len() == 0 {
         Ok(FitacfRecord {
             radar_revision_major: rec.radar_revision_major,
@@ -861,7 +852,6 @@ fn calculate_elevation(
 
     let array_separation: f32 = (x * x + y * y + z * z).sqrt();
     let mut elevation_corr = (z / array_separation).asin();
-
     let phi_sign: f32;
     if y > 0.0 {
         phi_sign = 1.0;
@@ -869,9 +859,9 @@ fn calculate_elevation(
         phi_sign = -1.0;
         elevation_corr *= -1.0;
     }
-    let azimuth_offset = (hdw.max_num_beams / 2) as f32 - 0.5;
+    let azimuth_offset = hdw.max_num_beams as f32 / 2.0 - 0.5;
     let phi_0 =
-        (hdw.beam_separation * (rec.beam_num as f32 - azimuth_offset) * PI as f32 / 180.0).cos();
+        (hdw.beam_separation * (rec.beam_num as f32 - azimuth_offset) * PI_f32 / 180.0).cos();
     let wave_num = 2.0 * PI_f32 * rec.tx_freq as f32 * 1000.0 / 299792458.0;
     let cable_offset = -2.0 * PI_f32 * rec.tx_freq as f32 * 1000.0 * hdw.tdiff_a * 1.0e-6;
     let phase_diff_max = phi_sign * wave_num * array_separation * phi_0 + cable_offset;
@@ -952,9 +942,9 @@ fn calculate_elevation(
         .iter()
         .map(|&t| {
             if t < 0.0 || t.abs() > 1.0 {
-                0.0
+                -180.0 / PI_f32 * elevation_corr
             } else {
-                (t + elevation_corr).sqrt().asin()
+                (t + elevation_corr).sqrt().asin() * 180.0 / PI_f32
             }
         })
         .collect();

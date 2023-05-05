@@ -4,6 +4,7 @@ use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+#[derive(Debug)]
 pub struct HdwInfo {
     pub station_id: i16,
     pub valid_from: NaiveDateTime,
@@ -76,7 +77,7 @@ impl HdwInfo {
             _ => Err(BackscatterError::new("Invalid station id"))?,
         };
         let raw_hdw_dir = env::var_os("HDW_DIR").unwrap();
-        let mut hdw_dir = raw_hdw_dir.to_str().unwrap();
+        let hdw_dir = raw_hdw_dir.to_str().unwrap();
         let hdw_file = format!("{}hdw.dat.{}", hdw_dir, site_name);
         let mut hdw_params: Vec<HdwInfo> = vec![];
         let file =
