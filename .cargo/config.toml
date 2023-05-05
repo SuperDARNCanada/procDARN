@@ -1,0 +1,2 @@
+[env]
+HDW_DIR = { value = "target/hdw/", relative = true }

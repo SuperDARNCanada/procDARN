@@ -25,16 +25,16 @@ fn criterion_benchmark(c: &mut Criterion) {
     // );
 }
 
-fn fitacf3() -> Vec<FitacfRecord> {
+fn fitacf3() {
     let file =
-        File::open("tests/test_files/test.rawacf").expect("Test file not found");
-    let rawacf = RawacfRecord::read_records(file).unwrap();
+        File::open("tests/test_files/20210607.1801.00.cly.a.rawacf").expect("Test file not found");
+    let rawacf = RawacfRecord::read_records(file).expect("Could not read records");
     let mut fitacf_records = vec![];
-    fitacf_records.push(fit_rawacf_record(&rawacf[0]).expect("Could not fit rawacf record"));
-    fitacf_records
-    // for rec in rawacf {
-    //     fitacf_records.push(fit_rawacf_record(rec)?);
-    // }
+    // fitacf_records.push(fit_rawacf_record(&rawacf[0]).expect("Could not fit rawacf record"));
+    for rec in rawacf {
+        fitacf_records.push(fit_rawacf_record(&rec).expect("Could not fit record"));
+    }
+    dmap::formats::to_file("tests/test_files/temp.fitacf", &fitacf_records);
 }
 
 // fn read_rawacf() -> Vec<RawDmapRecord> {

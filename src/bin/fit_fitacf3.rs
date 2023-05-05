@@ -38,7 +38,6 @@ fn bin_main() -> BinResult<()> {
     // Fit the records!
     let mut i = 0;
     for rec in rawacf_records {
-        println!("Fitting record {}", i);
         fitacf_records.push(fit_rawacf_record(&rec)?);
         i += 1;
     }

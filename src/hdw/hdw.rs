@@ -3,6 +3,11 @@ use chrono::NaiveDateTime;
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "target/hdw/"]
+struct Hdw;
 
 #[derive(Debug)]
 pub struct HdwInfo {
@@ -76,13 +81,9 @@ impl HdwInfo {
             19 => "zho",
             _ => Err(BackscatterError::new("Invalid station id"))?,
         };
-        let raw_hdw_dir = env::var_os("HDW_DIR").unwrap();
-        let hdw_dir = raw_hdw_dir.to_str().unwrap();
-        let hdw_file = format!("{}hdw.dat.{}", hdw_dir, site_name);
+        let hdw_file = Hdw::get(format!("hdw.dat.{}", site_name).as_str()).unwrap();
         let mut hdw_params: Vec<HdwInfo> = vec![];
-        let file =
-            File::open(hdw_file).map_err(|_| BackscatterError::new("Unable to open hdw file"))?;
-        let reader = BufReader::new(file).lines();
+        let reader = BufReader::new(hdw_file.data.as_ref()).lines();
         for line in reader {
             let line =
                 line.map_err(|_| BackscatterError::new("Unable to read line from hdw file"))?;
