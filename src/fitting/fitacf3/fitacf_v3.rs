@@ -100,6 +100,7 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     filtering::filter_bad_acfs(record, &mut range_list, noise_power);
     acf_power_fitting(&mut range_list)?;
     calculate_phase_and_elev_sigmas(&mut range_list, record)?;
+    // something wrong with phi values (sigmas are good, but phi is not)
     acf_phase_unwrap(&mut range_list);
     acf_phase_fitting(&mut range_list)?;
     filtering::filter_bad_fits(&mut range_list)?;
@@ -108,16 +109,16 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
 
     let dets = determinations(record, range_list, noise_power);
     let printable = dets.clone()?;
-    println!("linear power: {:?}\nlinear power error {:?}\n sigma power: {:?}\n sigma power error: {:?}",
-             printable.lambda_power,
-             printable.lambda_power_error,
-            printable.sigma_power,
-    printable.sigma_power_error);
+    // println!("linear power: {:?}\nlinear power error {:?}\n sigma power: {:?}\n sigma power error: {:?}",
+    //          printable.lambda_power,
+    //          printable.lambda_power_error,
+    //          printable.sigma_power,
+    //          printable.sigma_power_error);
     println!("linear spec wid: {:?}\nlinear spec wid error {:?}\n sigma spec wid: {:?}\n sigma spec wid error: {:?}",
-             printable.lambda_spectral_width,
-             printable.lambda_spectral_width_error,
-            printable.sigma_spectral_width,
-    printable.sigma_spectral_width_error);
+             printable.lag_zero_phi,
+             printable.lag_zero_phi_error,
+             printable.sigma_spectral_width,
+             printable.sigma_spectral_width_error);
     dets
 }
 
@@ -292,6 +293,7 @@ fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &RawacfReco
     Ok(())
 }
 
+/// passing
 fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     for mut range in ranges {
         let (mut slope_numerator, mut slope_denominator) = (0.0, 0.0);
@@ -363,6 +365,7 @@ fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// passing
 fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     for mut range in ranges {
         let (mut sum_xy, mut sum_xx) = (0.0, 0.0);
@@ -549,7 +552,7 @@ fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without linear fitted power")
                     .intercept as f32
-                    / (10.0 as f32).log10()
+                    / (10.0 as f32).ln()
                     - noise_db
             })
             .collect();
@@ -562,7 +565,7 @@ fn determinations(
                     .expect("Unable to make fitacf without linear fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0 as f32).log10()
+                    / (10.0 as f32).ln()
             })
             .collect();
         let power_quadratic: Vec<f32> = ranges
@@ -573,7 +576,7 @@ fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without quadratic fitted power")
                     .intercept as f32)
-                    / (10.0 as f32).log10()
+                    / (10.0 as f32).ln()
                     - noise_db
             })
             .collect();
@@ -586,7 +589,7 @@ fn determinations(
                     .expect("Unable to make fitacf without quadratic fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0 as f32).log10()
+                    / (10.0 as f32).ln()
             })
             .collect();
         let velocity_conversion: f32 =

@@ -126,8 +126,6 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
                 }
             }
         }
-        println!("Range {} bad lags {:?}", range.range_num, bad_indices);
-
         for i in bad_indices.iter().rev() {
             range.powers.remove(*i);
             // range.phases.remove(*i);
