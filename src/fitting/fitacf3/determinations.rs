@@ -2,7 +2,6 @@ use dmap::formats::{RawacfRecord, FitacfRecord};
 use dmap::{DmapVec, InDmap};
 use crate::fitting::fitacf3::fitstruct::{RangeNode};
 use crate::hdw::hdw::HdwInfo;
-use chrono::NaiveDateTime;
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
@@ -17,18 +16,8 @@ pub fn determinations(
     rec: &RawacfRecord,
     ranges: Vec<RangeNode>,
     noise_power: f32,
+    hdw: &HdwInfo
 ) -> Result<FitacfRecord, Fitacf3Error> {
-    let file_datetime = NaiveDateTime::parse_from_str(
-        format!(
-            "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
-            rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
-        )
-        .as_str(),
-        "%Y%m%d %H:%M:%S",
-    )
-    .map_err(|_| Fitacf3Error::Message("Unable to interpret record timestamp".to_string()))?;
-    let hdw = HdwInfo::new(rec.station_id, file_datetime)
-        .map_err(|e| Fitacf3Error::Message(e.details))?;
     let range_list: Vec<i16> = ranges.iter().map(|r| r.range_num as i16).collect();
     let lag_0_power_db: Vec<f32> = rec
         .lag_zero_power

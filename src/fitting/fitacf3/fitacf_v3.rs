@@ -8,6 +8,7 @@ use std::fmt::Display;
 use crate::fitting::fitacf3::filtering;
 use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::fitting;
+use crate::hdw::hdw::HdwInfo;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
@@ -35,7 +36,7 @@ impl Display for Fitacf3Error {
     }
 }
 
-pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
+pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let lags = create_lag_list(record);
 
     let noise_power;
@@ -69,7 +70,7 @@ pub fn fit_rawacf_record(record: &RawacfRecord) -> Result<FitacfRecord> {
     fitting::xcf_phase_unwrap(&mut range_list)?;
     fitting::xcf_phase_fitting(&mut range_list)?;
 
-    let dets = determinations(record, range_list, noise_power);
+    let dets = determinations(record, range_list, noise_power, hdw);
     dets
 }
 
