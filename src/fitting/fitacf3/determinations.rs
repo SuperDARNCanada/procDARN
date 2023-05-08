@@ -1,22 +1,21 @@
-use dmap::formats::{RawacfRecord, FitacfRecord};
+use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
+use crate::fitting::fitacf3::fitstruct::RangeNode;
+use crate::utils::hdw::HdwInfo;
+use dmap::formats::{FitacfRecord, RawacfRecord};
 use dmap::{DmapVec, InDmap};
-use crate::fitting::fitacf3::fitstruct::{RangeNode};
-use crate::hdw::hdw::HdwInfo;
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
-use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
 pub const V_MAX: f32 = 30.0;
 pub const W_MAX: f32 = 90.0;
 
-
 pub fn determinations(
     rec: &RawacfRecord,
     ranges: Vec<RangeNode>,
     noise_power: f32,
-    hdw: &HdwInfo
+    hdw: &HdwInfo,
 ) -> Result<FitacfRecord, Fitacf3Error> {
     let range_list: Vec<i16> = ranges.iter().map(|r| r.range_num as i16).collect();
     let lag_0_power_db: Vec<f32> = rec
@@ -31,7 +30,7 @@ pub fn determinations(
             }
         })
         .collect();
-    if range_list.len() == 0 {
+    if range_list.is_empty() {
         Ok(FitacfRecord {
             radar_revision_major: rec.radar_revision_major,
             radar_revision_minor: rec.radar_revision_minor,
@@ -144,7 +143,7 @@ pub fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without linear fitted power")
                     .intercept as f32
-                    / (10.0 as f32).ln()
+                    / (10.0_f32).ln()
                     - noise_db
             })
             .collect();
@@ -157,7 +156,7 @@ pub fn determinations(
                     .expect("Unable to make fitacf without linear fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0 as f32).ln()
+                    / (10.0_f32).ln()
             })
             .collect();
         let power_quadratic: Vec<f32> = ranges
@@ -168,7 +167,7 @@ pub fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without quadratic fitted power")
                     .intercept as f32)
-                    / (10.0 as f32).ln()
+                    / (10.0_f32).ln()
                     - noise_db
             })
             .collect();
@@ -181,7 +180,7 @@ pub fn determinations(
                     .expect("Unable to make fitacf without quadratic fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0 as f32).ln()
+                    / (10.0_f32).ln()
             })
             .collect();
         let velocity_conversion: f32 =
@@ -232,7 +231,7 @@ pub fn determinations(
             })
             .collect();
         let quadratic_width_conversion: f32 =
-            299792458.0 * (2.0 as f32).ln().sqrt() / (PI_f32 * rec.tx_freq as f32 * 1000.0);
+            299792458.0 * (2.0_f32).ln().sqrt() / (PI_f32 * rec.tx_freq as f32 * 1000.0);
         let spectral_width_quadratic: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -282,13 +281,7 @@ pub fn determinations(
             })
             .collect();
         let groundscatter_flag: Vec<i8> = zip(velocity.iter(), spectral_width_linear.iter())
-            .map(|(v, w)| {
-                if v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 1.0 {
-                    1
-                } else {
-                    0
-                }
-            })
+            .map(|(v, w)| (v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 1.0) as i8)
             .collect();
         let xcfs = &rec
             .xcfs
@@ -323,14 +316,14 @@ pub fn determinations(
             })
             .collect();
         let (elevation_low, elevation_normal, elevation_high) =
-            calculate_elevation(&ranges, rec, &xcf_phi0, &hdw);
+            calculate_elevation(&ranges, rec, &xcf_phi0, hdw);
 
         let float_zeros = DmapVec {
-            data: quality_flag.iter().map(|_| 0.0 as f32).collect(),
+            data: quality_flag.iter().map(|_| 0.0_f32).collect(),
             dimensions: vec![quality_flag.len() as i32],
         };
         let i8_zeros = DmapVec {
-            data: quality_flag.iter().map(|_| 0 as i8).collect(),
+            data: quality_flag.iter().map(|_| 0_i8).collect(),
             dimensions: vec![quality_flag.len() as i32],
         };
 
@@ -409,7 +402,7 @@ pub fn determinations(
             sigma_std_dev: convert_to_dmapvec(std_dev_quadratic),
             phi_std_dev: convert_to_dmapvec(std_dev_phi),
             xcf_quality_flag: Some(i8_zeros.clone()),
-            xcf_ground_flag: Some(i8_zeros.clone()),
+            xcf_ground_flag: Some(i8_zeros),
             lambda_xcf_power: Some(float_zeros.clone()),
             lambda_xcf_power_error: Some(float_zeros.clone()),
             sigma_xcf_power: Some(float_zeros.clone()),
@@ -428,7 +421,7 @@ pub fn determinations(
             elevation_low: Some(convert_to_dmapvec(elevation_low)),
             elevation_high: Some(convert_to_dmapvec(elevation_high)),
             lambda_xcf_std_dev: Some(float_zeros.clone()),
-            sigma_xcf_std_dev: Some(float_zeros.clone()),
+            sigma_xcf_std_dev: Some(float_zeros),
             phi_xcf_std_dev: Some(convert_to_dmapvec(xcf_phi_std_dev)),
         })
     }
@@ -442,9 +435,9 @@ fn convert_to_dmapvec<T: InDmap>(vals: Vec<T>) -> DmapVec<T> {
 }
 
 fn calculate_elevation(
-    ranges: &Vec<RangeNode>,
+    ranges: &[RangeNode],
     rec: &RawacfRecord,
-    xcf_phi0: &Vec<f32>,
+    xcf_phi0: &[f32],
     hdw: &HdwInfo,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     let x = hdw.intf_offset_x;

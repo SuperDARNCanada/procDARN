@@ -16,10 +16,16 @@ pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
 
     if rec.offset != 0 {
         if rec.channel == 1 {
-            let pulses_stereo: Vec<i32> = pulses_in_us.iter().map(|&p| p - rec.offset as i32).collect();
+            let pulses_stereo: Vec<i32> = pulses_in_us
+                .iter()
+                .map(|&p| p - rec.offset as i32)
+                .collect();
             pulses_in_us.extend(pulses_stereo);
         } else if rec.channel == 2 {
-            let pulses_stereo: Vec<i32> = pulses_in_us.iter().map(|&p| p + rec.offset as i32).collect();
+            let pulses_stereo: Vec<i32> = pulses_in_us
+                .iter()
+                .map(|&p| p + rec.offset as i32)
+                .collect();
             pulses_in_us.extend(pulses_stereo);
         }
     }
@@ -38,7 +44,7 @@ pub fn mark_bad_samples(rec: &RawacfRecord) -> Vec<i32> {
         // Start incrementing the sample until we find a sample that lies within a pulse
         while ts < t1 {
             sample += 1;
-            ts = ts + rec.sample_separation as i32;
+            ts += rec.sample_separation as i32;
         }
 
         // Blank all samples within the pulse duration
@@ -60,8 +66,7 @@ pub fn filter_tx_overlapped_lags(
     let bad_samples = mark_bad_samples(rec);
     for range_node in ranges {
         let mut bad_indices = vec![];
-        for idx in 0..lags.len() {
-            let lag = &lags[idx];
+        for (idx, lag) in lags.iter().enumerate() {
             let sample_1 = lag.sample_base_1 + range_node.range_num as i32;
             let sample_2 = lag.sample_base_2 + range_node.range_num as i32;
             if bad_samples.contains(&sample_1) || bad_samples.contains(&sample_2) {
@@ -101,7 +106,7 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
     }
     for range in ranges {
         let range_num = range.range_num;
-        if range.powers.ln_power.len() == 0 {
+        if range.powers.ln_power.is_empty() {
             continue;
         }
         let log_sigma_fluc = (FLUCTUATION_CUTOFF_COEFFICIENT as f32
@@ -117,7 +122,7 @@ pub fn filter_low_power_lags(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>) {
             } else {
                 let log_power = range.powers.ln_power[idx];
                 let alpha_2 = range.power_alpha_2[idx];
-                if ((1 as f64 / alpha_2.sqrt()) <= ALPHA_CUTOFF as f64)
+                if ((1_f64 / alpha_2.sqrt()) <= ALPHA_CUTOFF as f64)
                     && ((log_power < log_sigma_fluc as f64)
                         || is_close!(log_power, log_sigma_fluc as f64))
                 {
@@ -142,8 +147,7 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>, noise_po
     }
     let cutoff_power = noise_power * 2.0;
     let mut bad_indices = vec![];
-    for idx in 0..ranges.len() {
-        let range = &ranges[idx];
+    for (idx, range) in ranges.iter().enumerate() {
         let range_num = range.range_num as usize;
         let power = rec.lag_zero_power.data[range_num];
         let num_powers = range.powers.ln_power.len();
@@ -170,13 +174,12 @@ pub fn filter_bad_acfs(rec: &RawacfRecord, ranges: &mut Vec<RangeNode>, noise_po
 /// presumed passing
 pub fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> {
     let mut bad_indices = vec![];
-    for idx in 0..ranges.len() {
-        let range = &ranges[idx];
+    for (idx, range) in ranges.iter().enumerate() {
         if (range
             .phase_fit
             .as_ref()
             .ok_or_else(|| {
-                Fitacf3Error::Message(format!("Cannot filter fits since phase not fit"))
+                Fitacf3Error::Message("Cannot filter fits since phase not fit".to_string())
             })?
             .slope
             == 0.0)
@@ -184,9 +187,9 @@ pub fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> 
                 .lin_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::Message(format!(
-                        "Cannot filter fits since power not linearly fit"
-                    ))
+                    Fitacf3Error::Message(
+                        "Cannot filter fits since power not linearly fit".to_string(),
+                    )
                 })?
                 .slope
                 == 0.0)
@@ -194,9 +197,9 @@ pub fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> 
                 .quad_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::Message(format!(
-                        "Cannot filter fits since power not quadratically fit"
-                    ))
+                    Fitacf3Error::Message(
+                        "Cannot filter fits since power not quadratically fit".to_string(),
+                    )
                 })?
                 .slope
                 == 0.0)

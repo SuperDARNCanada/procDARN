@@ -1,10 +1,11 @@
 use backscatter_rs::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Error};
-use backscatter_rs::hdw::hdw::HdwInfo;
+use backscatter_rs::utils::hdw::HdwInfo;
+use chrono::NaiveDateTime;
 use clap::Parser;
 use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
+use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
-use chrono::NaiveDateTime;
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -35,7 +36,6 @@ fn bin_main() -> BinResult<()> {
 
     let rawacf = File::open(args.infile)?;
     let rawacf_records = RawacfRecord::read_records(rawacf)?;
-    let mut fitacf_records: Vec<FitacfRecord> = vec![];
 
     let rec = &rawacf_records[0];
     let file_datetime = NaiveDateTime::parse_from_str(
@@ -51,11 +51,10 @@ fn bin_main() -> BinResult<()> {
         .map_err(|e| Fitacf3Error::Message(e.details))?;
 
     // Fit the records!
-    let mut i = 0;
-    for rec in rawacf_records {
-        fitacf_records.push(fit_rawacf_record(&rec, &hdw)?);
-        i += 1;
-    }
+    let fitacf_records: Vec<FitacfRecord> = rawacf_records
+        .par_iter()
+        .map(|rec| fit_rawacf_record(rec, &hdw).expect("Unable to fit record"))
+        .collect();
 
     // Write to file
     to_file(args.outfile, &fitacf_records)?;

@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fmt::Formatter;
 
+#[derive(Debug)]
 pub struct BackscatterError {
     pub details: String,
 }
@@ -14,7 +15,7 @@ impl fmt::Display for BackscatterError {
 impl BackscatterError {
     pub fn new(details: &str) -> BackscatterError {
         BackscatterError {
-            details: format!("{}", details),
+            details: details.to_string(),
         }
     }
 }

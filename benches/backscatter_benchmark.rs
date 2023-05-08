@@ -1,28 +1,16 @@
-use dmap::formats::{FitacfRecord, RawacfRecord, DmapRecord};
+use backscatter_rs::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Error};
+use backscatter_rs::utils::hdw::HdwInfo;
+use chrono::NaiveDateTime;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use backscatter_rs::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
+use dmap::formats::{DmapRecord, FitacfRecord, RawacfRecord};
+
 use dmap;
+use rayon::prelude::*;
 use std::fs::File;
 
 fn criterion_benchmark(c: &mut Criterion) {
-    // c.bench_function("Read IQDAT", |b| b.iter(|| read_iqdat()));
-    // c.bench_function("Read MAP", |b| b.iter(|| read_map()));
-    // c.bench_function("Read RAWACF", |b| b.iter(|| read_rawacf()));
     c.bench_function("Fitacf3", |b| b.iter(|| fitacf3()));
-
-    // c.bench_function("Read and Parse RAWACF", |b| {
-    //     b.iter(|| read_and_parse_rawacf())
-    // });
-    // c.bench_function("Read and Parse FITACF", |b| {
-    //     b.iter(|| read_and_parse_fitacf())
-    // });
-    //
-    // let records = read_iqdat();
-    // c.bench_with_input(
-    //     BenchmarkId::new("Write IQDAT", "IQDAT Records"),
-    //     &records,
-    //     |b, s| b.iter(|| write_iqdat(s)),
-    // );
+    c.bench_function("Parallel Fitacf3", |b| b.iter(|| rayon_fitacf3()));
 }
 
 fn fitacf3() {
@@ -30,47 +18,51 @@ fn fitacf3() {
         File::open("tests/test_files/20210607.1801.00.cly.a.rawacf").expect("Test file not found");
     let rawacf = RawacfRecord::read_records(file).expect("Could not read records");
     let mut fitacf_records = vec![];
+
+    let rec = &rawacf[0];
+    let file_datetime = NaiveDateTime::parse_from_str(
+        format!(
+            "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
+            rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
+        )
+        .as_str(),
+        "%Y%m%d %H:%M:%S",
+    )
+    .expect("Unable to interpret record timestamp");
+    let hdw = HdwInfo::new(rec.station_id, file_datetime).expect("Unable to read hdw file");
     // fitacf_records.push(fit_rawacf_record(&rawacf[0]).expect("Could not fit rawacf record"));
     for rec in rawacf {
-        fitacf_records.push(fit_rawacf_record(&rec).expect("Could not fit record"));
+        fitacf_records.push(fit_rawacf_record(&rec, &hdw).expect("Could not fit record"));
     }
-    dmap::formats::to_file("tests/test_files/temp.fitacf", &fitacf_records);
+    dmap::formats::to_file("tests/test_files/temp.fitacf", &fitacf_records)
+        .expect("Unable to write to file");
 }
 
-// fn read_rawacf() -> Vec<RawDmapRecord> {
-//     let file = File::open("tests/test_files/20210607.1801.00.cly.a.rawacf.mean")
-//         .expect("Test file not found");
-//     dmap::read_records(file).unwrap()
-// }
-//
-// fn read_and_parse_rawacf() -> Vec<RawacfRecord> {
-//     let file = File::open("tests/test_files/20210607.1801.00.cly.a.rawacf.mean")
-//         .expect("Test file not found");
-//     let recs = dmap::read_records(file).unwrap();
-//     let mut rawacf_recs = vec![];
-//     for rec in recs {
-//         rawacf_recs.push(RawacfRecord::new(&rec).unwrap());
-//     }
-//     rawacf_recs
-// }
-//
-// fn read_iqdat() -> Vec<RawDmapRecord> {
-//     let file =
-//         File::open("tests/test_files/20160316.1945.01.rkn.iqdat").expect("Test file not found");
-//     dmap::read_records(file).unwrap()
-// }
-//
-// fn write_iqdat(records: &Vec<RawDmapRecord>) {
-//     let file =
-//         File::open("tests/test_files/20160316.1945.01.rkn.iqdat").expect("Test file not found");
-//     dmap::read_records(file).unwrap();
-//     dmap::to_file("tests/test_files/test.iqdat", records).unwrap();
-// }
-//
-// fn read_map() {
-//     let file = File::open("tests/test_files/20110214.map").expect("Test file not found");
-//     dmap::read_records(file).unwrap();
-// }
+fn rayon_fitacf3() {
+    let file =
+        File::open("tests/test_files/20210607.1801.00.cly.a.rawacf").expect("Test file not found");
+    let rawacf = RawacfRecord::read_records(file).expect("Could not read records");
+    let fitacf_records: Vec<FitacfRecord>;
+
+    let rec = &rawacf[0];
+    let file_datetime = NaiveDateTime::parse_from_str(
+        format!(
+            "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
+            rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
+        )
+        .as_str(),
+        "%Y%m%d %H:%M:%S",
+    )
+    .expect("Unable to interpret record timestamp");
+    let hdw = HdwInfo::new(rec.station_id, file_datetime).expect("Unable to read utils file");
+
+    fitacf_records = rawacf
+        .par_iter()
+        .map(|rec| fit_rawacf_record(&rec, &hdw).expect("Could not fit record"))
+        .collect();
+    dmap::formats::to_file("tests/test_files/temp.fitacf", &fitacf_records)
+        .expect("Unable to write to file");
+}
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);

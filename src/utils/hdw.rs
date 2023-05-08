@@ -1,9 +1,7 @@
 use crate::error::BackscatterError;
 use chrono::NaiveDateTime;
-use std::env;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use rust_embed::RustEmbed;
+use std::io::{BufRead, BufReader};
 
 #[derive(RustEmbed)]
 #[folder = "target/hdw/"]

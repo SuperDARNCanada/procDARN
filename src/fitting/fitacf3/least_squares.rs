@@ -24,9 +24,9 @@ impl LeastSquares {
     }
     pub fn two_parameter_line_fit(
         &self,
-        x_vals: &Vec<f64>,
-        y_vals: &Vec<f64>,
-        sigmas: &Vec<f64>,
+        x_vals: &[f64],
+        y_vals: &[f64],
+        sigmas: &[f64],
         fit_type: FitType,
     ) -> FittedData {
         let mut fitted: FittedData = Default::default();
@@ -42,15 +42,14 @@ impl LeastSquares {
         let delta_chi_2 = self.delta_chi_2[self.confidence][self.degrees_of_freedom];
         fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();
         fitted.delta_slope = delta_chi_2.sqrt() * fitted.variance_slope.sqrt();
-        fitted.chi_squared =
-            Self::calculate_chi_2(&mut fitted, x_vals, y_vals, sigmas, &fit_type);
+        fitted.chi_squared = Self::calculate_chi_2(&fitted, x_vals, y_vals, sigmas, &fit_type);
         fitted
     }
     pub fn one_parameter_line_fit(
         &self,
-        x_vals: &Vec<f64>,
-        y_vals: &Vec<f64>,
-        sigmas: &Vec<f64>,
+        x_vals: &[f64],
+        y_vals: &[f64],
+        sigmas: &[f64],
     ) -> FittedData {
         let mut fitted: FittedData = Default::default();
         let sums = Self::find_sums(x_vals, y_vals, sigmas, &FitType::Linear);
@@ -62,22 +61,15 @@ impl LeastSquares {
         fitted.delta_slope = delta_chi_2.sqrt() * fitted.variance_slope.sqrt();
         fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();
         fitted.chi_squared =
-            Self::calculate_chi_2(&mut fitted, x_vals, y_vals, sigmas, &FitType::Linear);
+            Self::calculate_chi_2(&fitted, x_vals, y_vals, sigmas, &FitType::Linear);
         fitted
     }
     /// passing
-    fn find_sums(
-        x_vals: &Vec<f64>,
-        y_vals: &Vec<f64>,
-        sigmas: &Vec<f64>,
-        fit_type: &FitType,
-    ) -> Sums {
+    fn find_sums(x_vals: &[f64], y_vals: &[f64], sigmas: &[f64], fit_type: &FitType) -> Sums {
         let nonzero_sigma: Vec<usize> = sigmas
             .iter()
             .enumerate()
-            .map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
-            .filter(|&x| x.is_some())
-            .map(|x| x.unwrap())
+            .filter_map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
             .collect();
         let sigma_squared: Vec<f64> = nonzero_sigma
             .iter()
@@ -119,17 +111,15 @@ impl LeastSquares {
     }
     fn calculate_chi_2(
         fitted: &FittedData,
-        x_vals: &Vec<f64>,
-        y_vals: &Vec<f64>,
-        sigmas: &Vec<f64>,
+        x_vals: &[f64],
+        y_vals: &[f64],
+        sigmas: &[f64],
         fit_type: &FitType,
     ) -> f64 {
         let nonzero_sigma: Vec<usize> = sigmas
             .iter()
             .enumerate()
-            .map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
-            .filter(|&x| x.is_some())
-            .map(|x| x.unwrap())
+            .filter_map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
             .collect();
         let mut chi: Vec<f64> = vec![];
         match fit_type {

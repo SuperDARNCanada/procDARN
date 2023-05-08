@@ -25,15 +25,15 @@ impl RangeNode {
         index: usize,
         range_num: usize,
         record: &RawacfRecord,
-        lags: &Vec<LagNode>,
+        lags: &[LagNode],
     ) -> Result<RangeNode, Fitacf3Error> {
         let cross_range_interference =
             RangeNode::calculate_cross_range_interference(range_num, record);
         let alpha_2 =
-            RangeNode::calculate_alphas(range_num, &cross_range_interference, record, &lags);
-        let phases = PhaseNode::new(record, "acfd", &lags, index)?;
-        let elevations = PhaseNode::new(record, "xcfd", &lags, index)?;
-        let powers = PowerNode::new(record, &lags, index, range_num, &alpha_2);
+            RangeNode::calculate_alphas(range_num, &cross_range_interference, record, lags);
+        let phases = PhaseNode::new(record, "acfd", lags, index)?;
+        let elevations = PhaseNode::new(record, "xcfd", lags, index)?;
+        let powers = PowerNode::new(record, lags, index, range_num, &alpha_2);
         Ok(RangeNode {
             range_idx: index,
             range_num,
@@ -53,13 +53,12 @@ impl RangeNode {
         })
     }
     fn calculate_cross_range_interference(range_num: usize, rec: &RawacfRecord) -> Vec<f64> {
-        let tau: i16;
-        if rec.sample_separation != 0 {
-            tau = rec.multi_pulse_increment / rec.sample_separation;
+        let tau: i16 = if rec.sample_separation != 0 {
+            rec.multi_pulse_increment / rec.sample_separation
         } else {
             // TODO: Log warning?
-            tau = rec.multi_pulse_increment / rec.tx_pulse_length;
-        }
+            rec.multi_pulse_increment / rec.tx_pulse_length
+        };
 
         let mut interference_for_pulses: Vec<f64> = vec![];
         for pulse_to_check in 0..rec.num_pulses as usize {
@@ -77,13 +76,12 @@ impl RangeNode {
     }
     fn calculate_alphas(
         range_num: usize,
-        cross_range_interference: &Vec<f64>,
+        cross_range_interference: &[f64],
         rec: &RawacfRecord,
-        lags: &Vec<LagNode>,
+        lags: &[LagNode],
     ) -> Vec<f64> {
         let mut alpha_2: Vec<f64> = vec![];
-        for idx in 0..lags.len() {
-            let lag = &lags[idx];
+        for lag in lags.iter() {
             let pulse_1_interference = cross_range_interference[lag.pulses[0] as usize];
             let pulse_2_interference = cross_range_interference[lag.pulses[1] as usize];
             let lag_zero_power = rec.lag_zero_power.data[range_num] as f64;
@@ -107,14 +105,16 @@ impl PhaseNode {
     pub fn new(
         rec: &RawacfRecord,
         phase_type: &str,
-        lags: &Vec<LagNode>,
+        lags: &[LagNode],
         range_idx: usize,
     ) -> Result<PhaseNode, Fitacf3Error> {
         let acfd = match phase_type {
             "acfd" => &rec.acfs.data,
             "xcfd" => match &rec.xcfs {
                 Some(x) => &x.data,
-                None => Err(Fitacf3Error::Message(format!("Cannot find xcfs in data")))?,
+                None => Err(Fitacf3Error::Message(
+                    "Cannot find xcfs in data".to_string(),
+                ))?,
             },
             _ => Err(Fitacf3Error::Message(format!(
                 "Unknown type for PhaseNode: {}",
@@ -150,10 +150,10 @@ pub struct PowerNode {
 impl PowerNode {
     pub fn new(
         rec: &RawacfRecord,
-        lags: &Vec<LagNode>,
+        lags: &[LagNode],
         range_idx: usize,
         range_num: usize,
-        alpha_2: &Vec<f64>,
+        alpha_2: &[f64],
     ) -> PowerNode {
         let pwr_0 = rec.lag_zero_power.data[range_num] as f64;
         // acfs stores as [num_ranges, num_lags, 2] in memory, with 2 corresponding to real, imag

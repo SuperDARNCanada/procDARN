@@ -1,10 +1,5 @@
-use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
-mod error;
-mod fitting;
-mod hdw;
+use dmap::formats::{to_file, DmapRecord, RawacfRecord};
 use std::fs::File;
-// use std::io::Read;
-use std::path::Path;
 
 fn main() {
     let file =

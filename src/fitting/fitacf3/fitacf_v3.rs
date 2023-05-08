@@ -1,14 +1,14 @@
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 
+use crate::fitting::fitacf3::determinations::determinations;
+use crate::fitting::fitacf3::filtering;
+use crate::fitting::fitacf3::fitting;
+use crate::utils::hdw::HdwInfo;
 use dmap::formats::{FitacfRecord, RawacfRecord};
 use std::error::Error;
 use std::f64::consts::PI;
 use std::fmt;
 use std::fmt::Display;
-use crate::fitting::fitacf3::filtering;
-use crate::fitting::fitacf3::determinations::determinations;
-use crate::fitting::fitacf3::fitting;
-use crate::hdw::hdw::HdwInfo;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
@@ -31,7 +31,7 @@ impl Display for Fitacf3Error {
         match self {
             Fitacf3Error::Message(msg) => write!(f, "{}", msg),
             Fitacf3Error::Lookup(msg) => write!(f, "{}", msg),
-            Fitacf3Error::Mismatch{msg} => write!(f, "{}", msg)
+            Fitacf3Error::Mismatch { msg } => write!(f, "{}", msg),
         }
     }
 }
@@ -39,12 +39,11 @@ impl Display for Fitacf3Error {
 pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let lags = create_lag_list(record);
 
-    let noise_power;
-    if record.num_averages <= 0 {
-        noise_power = 1.0;
+    let noise_power = if record.num_averages <= 0 {
+        1.0
     } else {
-        noise_power = acf_cutoff_power(record);
-    }
+        acf_cutoff_power(record)
+    };
     let mut range_list = vec![];
     for i in 0..record.range_list.data.len() {
         let range_num = record.range_list.data[i];
@@ -58,20 +57,13 @@ pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfR
     filtering::filter_bad_acfs(record, &mut range_list, noise_power);
     fitting::acf_power_fitting(&mut range_list)?;
     fitting::calculate_phase_and_elev_sigmas(&mut range_list, record)?;
-    for range in &range_list {
-        println!("Range {} phases: {:?}", range.range_num, range.phases.phases);
-    }
     fitting::acf_phase_unwrap(&mut range_list);
-    for range in &range_list {
-        println!("Range {} phases: {:?}", range.range_num, range.phases.phases);
-    }
     fitting::acf_phase_fitting(&mut range_list)?;
     filtering::filter_bad_fits(&mut range_list)?;
     fitting::xcf_phase_unwrap(&mut range_list)?;
     fitting::xcf_phase_fitting(&mut range_list)?;
 
-    let dets = determinations(record, range_list, noise_power, hdw);
-    dets
+    determinations(record, range_list, noise_power, hdw)
 }
 
 /// Creates the lag table based on the data.
@@ -112,7 +104,7 @@ fn create_lag_list(record: &RawacfRecord) -> Vec<LagNode> {
 /// Calculates the minimum power value for ACFs in the record (passing)
 fn acf_cutoff_power(rec: &RawacfRecord) -> f32 {
     let mut sorted_power_levels = rec.lag_zero_power.data.clone();
-    sorted_power_levels.sort_by(|a, b| a.total_cmp(&b)); // sort floats
+    sorted_power_levels.sort_by(|a, b| a.total_cmp(b)); // sort floats
     let mut i: usize = 0;
     let mut j: f64 = 0.0;
     let mut min_power: f64 = 0.0;
