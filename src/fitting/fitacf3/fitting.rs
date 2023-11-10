@@ -11,7 +11,7 @@ type Result<T> = std::result::Result<T, Fitacf3Error>;
 pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
 
-    for mut range in ranges {
+    for range in ranges {
         let log_powers = &range.powers.ln_power;
         let sigmas = &range.powers.std_dev;
         let t = &range.powers.t;
@@ -45,7 +45,7 @@ pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 /// passing
 pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
-    for mut range in ranges {
+    for range in ranges {
         let phases = &range.phases.phases;
         let sigmas = &range.phases.std_dev;
         let t = &range.phases.t;
@@ -64,7 +64,7 @@ pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 /// passing
 pub fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
-    for mut range in ranges {
+    for range in ranges {
         let phases = &range.elev.phases;
         let sigmas = &range.elev.std_dev;
         let t = &range.elev.t;
@@ -85,7 +85,7 @@ pub fn calculate_phase_and_elev_sigmas(
     ranges: &mut Vec<RangeNode>,
     rec: &RawacfRecord,
 ) -> Result<()> {
-    for mut range in ranges {
+    for range in ranges {
         let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
         // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
         let pwr_values: Vec<f64> = range
@@ -119,7 +119,7 @@ pub fn calculate_phase_and_elev_sigmas(
 
 /// passing
 pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
-    for mut range in ranges {
+    for range in ranges {
         let (mut slope_numerator, mut slope_denominator) = (0.0, 0.0);
 
         let phases = &range.phases.phases;
@@ -191,7 +191,7 @@ pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
 
 /// passing
 pub fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
-    for mut range in ranges {
+    for range in ranges {
         let (mut sum_xy, mut sum_xx) = (0.0, 0.0);
 
         let phases = &range.elev.phases;
