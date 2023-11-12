@@ -1,7 +1,7 @@
 // use backscatter_rs::gridding::grid::{grid_fitacf_record, GridError};
 use backscatter_rs::utils::hdw::HdwInfo;
 use chrono::NaiveDateTime;
-use clap::Parser;
+use clap::{value_parser, Parser};
 use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
 use rayon::prelude::*;
 use std::fs::File;
@@ -55,8 +55,8 @@ struct Args {
     scan_length: Option<i32>,
 
     /// Time interval to store in each grid record, in whole seconds
-    #[arg(short = 'i', long)]
-    record_interval: Option<i32>,
+    #[arg(short = 'i', long, value_parser = clap::value_parser!(i32), default_value = "120")]
+    record_interval: i32,
 
     /// Stereo channel identifier, either 'a' or 'b'
     #[arg(long, visible_alias = "cn")]
@@ -86,49 +86,49 @@ struct Args {
     #[arg(long, visible_alias = "maxsrng")]
     max_slant_range: Option<f32>,
 
-    /// Flag to use filter weighting mode
-    #[arg(long, visible_alias = "fwgt", action = clap::ArgAction::SetTrue)]
-    filter_weighting: bool,
+    /// Filter weighting mode
+    #[arg(long, visible_alias = "fwgt", value_parser = clap::value_parser!(i32), default_value = "0")]
+    filter_weighting: i32,
 
-    /// Maximum power in dB
-    #[arg(long, visible_alias = "pmax")]
-    max_power: Option<f32>,
+    /// Maximum power (linear scale)
+    #[arg(long, visible_alias = "pmax", value_parser = clap::value_parser!(f32), default_value = "2500")]
+    max_power: f32,
 
     /// Maximum velocity in m/s
-    #[arg(long, visible_alias = "vmax")]
-    max_velocity: Option<f32>,
+    #[arg(long, visible_alias = "vmax", value_parser = clap::value_parser!(f32), default_value = "60")]
+    max_velocity: f32,
 
     /// Maximum spectral width in m/s
-    #[arg(long, visible_alias = "wmax")]
-    max_spectral_width: Option<f32>,
+    #[arg(long, visible_alias = "wmax", value_parser = clap::value_parser!(f32), default_value = "1000")]
+    max_spectral_width: f32,
 
     /// Maximum velocity error in m/s
-    #[arg(long, visible_alias = "vemax")]
-    max_velocity_error: Option<f32>,
+    #[arg(long, visible_alias = "vemax", value_parser = clap::value_parser!(f32), default_value = "200")]
+    max_velocity_error: f32,
 
-    /// Minimum power in dB
-    #[arg(long, visible_alias = "pmin")]
-    min_power: Option<f32>,
+    /// Minimum power (linear scale)
+    #[arg(long, visible_alias = "pmin", value_parser = clap::value_parser!(f32), default_value = "35")]
+    min_power: f32,
 
     /// Minimum velocity in m/s
-    #[arg(long, visible_alias = "vmin")]
-    min_velocity: Option<f32>,
+    #[arg(long, visible_alias = "vmin", value_parser = clap::value_parser!(f32), default_value = "3")]
+    min_velocity: f32,
 
     /// Minimum spectral width in m/s
-    #[arg(long, visible_alias = "wmin")]
-    min_spectral_width: Option<f32>,
+    #[arg(long, visible_alias = "wmin", value_parser = clap::value_parser!(f32), default_value = "10")]
+    min_spectral_width: f32,
 
     /// Minimum velocity error in m/s
-    #[arg(long, visible_alias = "vemin")]
-    min_velocity_error: Option<f32>,
+    #[arg(long, visible_alias = "vemin", value_parser = clap::value_parser!(f32), default_value = "0")]
+    min_velocity_error: f32,
 
     /// Altitude at which mapping is done in km
-    #[arg(long, visible_alias = "alt")]
-    altitude: Option<f32>,
+    #[arg(long, visible_alias = "alt", value_parser = clap::value_parser!(f32), default_value = "300")]
+    altitude: f32,
 
     /// Maximum allowed frequency variation in Hz
-    #[arg(long, visible_alias = "fmax")]
-    max_frequency_var: Option<i32>,
+    #[arg(long, visible_alias = "fmax", value_parser = clap::value_parser!(i32), default_value = "500000")]
+    max_frequency_var: i32,
 
     /// Flag to disable boxcar median filtering
     #[arg(long, visible_alias = "nav", action = clap::ArgAction::SetFalse)]
@@ -177,6 +177,10 @@ struct Args {
     /// Map data using old AACGM coefficients, rather than v2
     #[arg(long, visible_alias = "old_aacgm", action = clap::ArgAction::SetTrue)]
     old_aacgm_flag: bool,
+
+    /// Verbose mode
+    #[arg(short, long, action = clap::ArgAction::SetTrue)]
+    verbose: bool,
 }
 
 fn bin_main() -> BinResult<()> {
