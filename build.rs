@@ -11,8 +11,7 @@ fn main() {
             Ok(r) => r,
             Err(err) => panic!("failed to clone: {}", err),
         };
-    }
-    else {
+    } else {
         println!("{out_dir} already exists");
     }
 }
