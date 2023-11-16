@@ -44,12 +44,12 @@ impl RadarBeam {
 }
 
 pub struct RadarScan {
-    pub station_id: i32,        // stid in RST
-    pub version_major: i32,     // version.major in RST
-    pub version_minor: i32,     // version.minor in RST
-    pub start_time: f64,        // st_time in RST
-    pub end_time: f64,          // ed_time in RST
-    pub beams: Vec<RadarBeam>,  // bm in RST
+    pub station_id: i32,       // stid in RST
+    pub version_major: i32,    // version.major in RST
+    pub version_minor: i32,    // version.minor in RST
+    pub start_time: f64,       // st_time in RST
+    pub end_time: f64,         // ed_time in RST
+    pub beams: Vec<RadarBeam>, // bm in RST
 }
 impl RadarScan {
     /// Clears the beams

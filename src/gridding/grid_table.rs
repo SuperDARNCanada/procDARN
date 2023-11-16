@@ -1,15 +1,16 @@
 use crate::gridding::grid::GridError;
+use crate::utils::hdw::HdwInfo;
 use crate::utils::scan::{RadarBeam, RadarScan};
 use std::f64::consts::PI;
-use crate::utils::hdw::HdwInfo;
+use crate::utils::rpos::rpos_range_beam_azimuth_elevation;
 
-pub const VELOCITY_ERROR_MIN: f64 = 100.0;  // m/s
-pub const POWER_LIN_ERROR_MIN: f64 = 1.0;   // a.u. in linear scale
-pub const WIDTH_LIN_ERROR_MIN: f64 = 1.0;   // m/s
+pub const VELOCITY_ERROR_MIN: f64 = 100.0; // m/s
+pub const POWER_LIN_ERROR_MIN: f64 = 1.0; // a.u. in linear scale
+pub const WIDTH_LIN_ERROR_MIN: f64 = 1.0; // m/s
 
-pub const RADIUS_EARTH: f64 = 6378.0;   // km TODO: Confirm value
+pub const RADIUS_EARTH: f64 = 6371.2; // km
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GridBeam {
     pub beam: i32,         // bm in RST
     pub first_range: i32,  // frang in RST, km
@@ -155,11 +156,10 @@ impl GridTable {
 
     /// Returns the index of the point in the table whose reference number matches the input.
     /// Called GridTableFindPoint in RST
-    pub fn find_point(&self, reference: i32) -> Result<i32, GridError> {
+    pub fn find_point(&self, reference: i32) -> Result<usize, GridError> {
         self.points
             .iter()
             .position(|x| x.reference == reference)
-            .map(|x| x as i32)
             .ok_or(GridError::Message(format!(
                 "Point {} not in grid table",
                 reference
@@ -168,14 +168,60 @@ impl GridTable {
 
     /// Adds a grid beam to the grid table.
     /// Called GridTableAddBeam in RST
-    pub fn add_beam(&mut self, hdw: &HdwInfo, altitude: f64, time: f64, beam: RadarBeam, chisham: bool, old_aacgm: bool) {
-        let velocity_correction: f64 = (2.0 * PI / 86400.0)*RADIUS_EARTH*1000.0*(PI*&hdw.latitude as f64/180.0).cos();
+    pub fn add_beam(
+        &mut self,
+        hdw: &HdwInfo,
+        altitude: f64,
+        time: f64,
+        scan_beam: &RadarBeam,
+        chisham: bool,
+        old_aacgm: bool,
+    ) -> Result<usize, GridError> {
+        let velocity_correction: f64 = (2.0 * PI / 86400.0)
+            * RADIUS_EARTH
+            * 1000.0
+            * (PI * hdw.latitude.clone() as f64 / 180.0).cos();
         self.num_beams += 1;
 
+        let mut grid_beam = GridBeam {
+            beam: scan_beam.beam,
+            first_range: scan_beam.first_range,
+            range_sep: scan_beam.range_sep,
+            rx_rise: scan_beam.rx_rise,
+            num_ranges: scan_beam.num_ranges,
+            ..Default::default()
+        };
+
         // TODO: Convert tval to year, month, day, hour, minute, seconds
-        for r in 0..beam.num_ranges {
+
+        for range in 0..grid_beam.num_ranges {
             // TODO: Calculate geographic azimuth and elevation
+            rpos_range_beam_azimuth_elevation(
+                grid_beam.beam,
+                range,
+                year,
+                hdw,
+                first_range,
+                range_sep,
+                rx_rise,
+                altitude,
+                chisham,
+            );
+
             // TODO: Calculate magnetic latitude and longitude
+            rpos_inv_mag(
+                grid_beam.beam,
+                range,
+                year,
+                hdw,
+                first_range,
+                range_sep,
+                rx_rise,
+                altitude,
+                chisham,
+                old_aacgm,
+            );
+
             // TODO: Ensure magnetic azimuth and longitude between 0-360 degrees
             // TODO: Calculate magnetic grid cell latitude (eg, 72.1->72.5, 57.8->57.5, etc)
             // TODO: Calculate magnetic grid longitude spacing at grid latitude
@@ -187,12 +233,13 @@ impl GridTable {
             // TODO: Set index, magnetic azimuth, inertial velocity correction factor of beam
             // TODO: Return index of beam number added to self
         }
+        Ok(0)
     }
 
     /// Find the index of the beam in the grid table whose beam number and operating parameters
     /// match those of the input.
     /// Called GridTableFindBeam in RST
-    pub fn find_beam(&self, beam: &RadarBeam) -> Result<i32, GridError> {
+    pub fn find_beam(&self, beam: &RadarBeam) -> Result<usize, GridError> {
         self.beams
             .iter()
             .position(|x| {
@@ -201,13 +248,21 @@ impl GridTable {
                     && x.range_sep == beam.range_sep
                     && x.num_ranges == beam.num_ranges
             })
-            .map(|x| x as i32)
             .ok_or(GridError::Message(format!("Beam not found in grid table",)))
     }
 
     /// Maps radar scan data to an equal-area grid in magnetic coordinates.
     /// Called GridTableMap in RST
-    pub fn map (&mut self, scan: &RadarScan, hdw: &HdwInfo, tlen: i32, iflg: i32, altitude: f64, chisham: bool, old_aacgm: bool) {
+    pub fn map(
+        &mut self,
+        scan: &RadarScan,
+        hdw: &HdwInfo,
+        tlen: i32,
+        iflg: i32,
+        altitude: f64,
+        chisham: bool,
+        old_aacgm: bool,
+    ) -> Result<(), GridError> {
         let time = (&scan.start_time + &scan.end_time) / 2.0;
         if self.status == 0 {
             self.status = 1;
@@ -220,22 +275,100 @@ impl GridTable {
             self.station_id = scan.station_id.clone();
         }
 
-        for beam in scan.beams.iter() {
-            if beam.beam != -1 {
-                match self.find_beam(beam) {
-                    Ok(_) => {},
-                    Err(_) => self.add_beam(hdw, altitude, time, beam, chisham, old_aacgm),
+        for scan_beam in scan.beams.iter() {
+            let mut beam_index: usize = 0;
+            if scan_beam.beam != -1 {
+                beam_index = match self.find_beam(scan_beam) {
+                    Ok(i) => i,
+                    Err(_) => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
                 };
             }
 
-            for range in 0..beam.num_ranges as usize {
-                if beam.scatter[range as usize] != 0 {
-                    let velocity_error = beam.cells[range].
+            let grid_beam = &self.beams[beam_index];
+
+            for range in 0..scan_beam.num_ranges.clone() as usize {
+                if scan_beam.scatter[range] == 0 {
+                    continue;
                 }
+
+                let mut velocity_error = scan_beam.cells[range].velocity_error;
+                let mut power_lin_error = scan_beam.cells[range].power_lin_error;
+                let mut width_lin_error = scan_beam.cells[range].spectral_width_lin_error;
+
+                if velocity_error < VELOCITY_ERROR_MIN {
+                    velocity_error = VELOCITY_ERROR_MIN;
+                }
+                if power_lin_error < POWER_LIN_ERROR_MIN {
+                    power_lin_error = POWER_LIN_ERROR_MIN;
+                }
+                if width_lin_error < WIDTH_LIN_ERROR_MIN {
+                    width_lin_error = WIDTH_LIN_ERROR_MIN;
+                }
+
+                // Get grid cell of radar beam/gate measurement
+                let mut grid_cell = &self.points[grid_beam.index[range] as usize];
+
+                // Add magnetic azimuth of radar beam/gate measurement
+                *grid_cell.azimuth += grid_beam.azimuth[range];
+
+                if iflg == 0 {
+                    *grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
+                        * (grid_beam.azimuth[range] * PI / 180.).cos()
+                        / (velocity_error * velocity_error);
+                    *grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
+                        * (grid_beam.azimuth[range] * PI / 180.).sin()
+                        / (velocity_error * velocity_error);
+                } else {
+                    *grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
+                        + grid_beam.ival[range])
+                        * (grid_beam.azimuth[range] * PI / 180.).cos()
+                        / (velocity_error * velocity_error);
+                    *grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
+                        + grid_beam.ival[range])
+                        * (grid_beam.azimuth[range] * PI / 180.).sin()
+                        / (velocity_error * velocity_error);
+                }
+
+                *grid_cell.power_median +=
+                    scan_beam.cells[range].power_lin / (power_lin_error * power_lin_error);
+                *grid_cell.spectral_width_median +=
+                    scan_beam.cells[range].spectral_width_lin / (width_lin_error * width_lin_error);
+
+                *grid_cell.velocity_stddev /= velocity_error * velocity_error;
+                *grid_cell.power_stddev /= power_lin_error * power_lin_error;
+                *grid_cell.spectral_width_stddev /= width_lin_error * width_lin_error;
+                *grid_cell.count += 1;
             }
-            // TODO: A whole lot more...
         }
 
+        // TODO: Check if somehow all beams in scan not considered?
 
+        let mut freq: f64 = 0.0;
+        let mut noise: f64 = 0.0;
+        let mut variance: f64 = 0.0;
+        let mut count: f64 = 0.0;
+
+        for scan_beam in scan.beams.iter().filter(|beam| beam.beam != -1) {
+            self.program_id = scan_beam.program_id;
+
+            // Sum the frequency and noise values
+            freq += scan_beam.freq as f64;
+            noise += scan_beam.noise as f64;
+            count += 1.0;
+        }
+
+        // Average frequency and noise over all beams in scan
+        freq = freq / count;
+        noise = noise / count;
+
+        for scan_beam in scan.beams.iter().filter(|beam| beam.beam != -1) {
+            variance += (scan_beam.noise as f64 - noise) * (scan_beam.noise as f64 - noise);
+        }
+        self.noise_mean += noise;
+        self.noise_stddev += (variance / count).sqrt();
+        self.freq += freq;
+        self.num_scans += 1;
+
+        Ok(())
     }
 }
