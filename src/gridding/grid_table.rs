@@ -1,8 +1,8 @@
 use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
+use crate::utils::rpos::rpos_range_beam_azimuth_elevation;
 use crate::utils::scan::{RadarBeam, RadarScan};
 use std::f64::consts::PI;
-use crate::utils::rpos::rpos_range_beam_azimuth_elevation;
 
 pub const VELOCITY_ERROR_MIN: f64 = 100.0; // m/s
 pub const POWER_LIN_ERROR_MIN: f64 = 1.0; // a.u. in linear scale

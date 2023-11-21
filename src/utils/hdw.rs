@@ -9,26 +9,26 @@ struct Hdw;
 
 #[derive(Debug)]
 pub struct HdwInfo {
-    pub station_id: i16,
-    pub valid_from: NaiveDateTime,
-    pub latitude: f32,
-    pub longitude: f32,
-    pub altitude: f32,
-    pub boresight: f32,
-    pub boresight_shift: f32,
-    pub beam_separation: f32,
-    pub velocity_sign: f32,
-    pub phase_sign: f32,
-    pub tdiff_a: f32,
-    pub tdiff_b: f32,
-    pub intf_offset_x: f32,
-    pub intf_offset_y: f32,
-    pub intf_offset_z: f32,
-    pub rx_rise_time: f32,
-    pub rx_atten_step: f32,
-    pub attenuation_stages: f32,
-    pub max_num_ranges: i16,
-    pub max_num_beams: i16,
+    pub station_id: i16,           // stid in RST
+    pub valid_from: NaiveDateTime, // date, hr, mt, sc in RST
+    pub latitude: f32,             // geolat in RST
+    pub longitude: f32,            // geolon in RST
+    pub altitude: f32,             // alt in RST
+    pub boresight: f32,            // boresite in RST
+    pub boresight_shift: f32,      // bmoff in RST
+    pub beam_separation: f32,      // bmsep in RST
+    pub velocity_sign: f32,        // vdir in RST
+    pub phase_sign: f32,           // phidiff in RST
+    pub tdiff_a: f32,              // tdiff[0] in RST
+    pub tdiff_b: f32,              // tdiff[1] in RST
+    pub intf_offset_x: f32,        // interfer[0] in RST
+    pub intf_offset_y: f32,        // interfer[1] in RST
+    pub intf_offset_z: f32,        // interfer[2] in RST
+    pub rx_rise_time: f32,         // recrise in RST
+    pub rx_atten_step: f32,        // atten in RST
+    pub attenuation_stages: f32,   // maxatten in RST
+    pub max_num_ranges: i16,       // maxrange in RST
+    pub max_num_beams: i16,        // maxbeam in RST
 }
 
 impl HdwInfo {
@@ -116,7 +116,7 @@ impl HdwInfo {
                         BackscatterError::new("Unable to read boresight from hdw file")
                     })?,
                     boresight_shift: elements[8].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read boresightshift from hdw file")
+                        BackscatterError::new("Unable to read boresight shift from hdw file")
                     })?,
                     beam_separation: elements[9].parse::<f32>().map_err(|_| {
                         BackscatterError::new("Unable to read beam separation from hdw file")
