@@ -1,8 +1,9 @@
 use crate::error::BackscatterError;
 use crate::gridding::grid_table::RADIUS_EARTH;
 use crate::utils::hdw::HdwInfo;
-use crate::utils::igrf::igrf_magnetic_components;
 use geodesy::prelude::*;
+use igrf::declination;
+use time::Date;
 use std::f64::consts::PI;
 
 /// Normalize a vector.
@@ -201,12 +202,14 @@ pub fn rpos_range_beam_azimuth_elevation(
     // Normalize the local horizontal vector
     let mut normed_local_del = norm_vector(&local_del);
 
-    // Calculate the magnetic field vector at the geocentric spherical range/beam position in
-    // local south/east/vertical coordinates
-    let b_vec = igrf_magnetic_components(year, &cell_geoc)?;
+    // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
+    let igrf_field = declination(cell_geoc[1], cell_geoc[0], cell_geoc[2] as u32, Date::from_calendar_date(year, time::Month::January, 1)?)?;
+
+    // Convert from north/east/down coordinates to south/east/up
+    let b_field = Coor4D::raw(-igrf_field.x, igrf_field.y, -igrf_field.z, 0.0);
 
     // Normalize the magnetic field vector
-    let normed_b = norm_vector(&b_vec);
+    let normed_b = norm_vector(&b_field);
 
     // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
     // orthogonal to the magnetic field at the range/beam position
@@ -216,7 +219,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     // Normalize the new radar-to-range/beam vector
     normed_local_del = norm_vector(&normed_local_del);
 
-    // Calculate the elevation angle of the orthogonal radar-to-range/beam vector
+    // Calculate the azimuth and elevation angles of the orthogonal radar-to-range/beam vector
     let elevation = normed_local_del[2].atan2(
         normed_local_del[0] * normed_local_del[0] + normed_local_del[1] * normed_local_del[1],
     );
@@ -236,7 +239,7 @@ pub fn rpos_inv_mag(
     altitude: f64,
     chisham: bool,
     old_aacgm: bool,
-) -> Result<f32, BackscatterError> {
+) -> Result<(f64, f64, f64), BackscatterError> {
     let site_location_geo = Coor4D::geo(
         hdw.latitude as f64,
         hdw.longitude as f64,
@@ -283,12 +286,14 @@ pub fn rpos_inv_mag(
     // Normalize the local horizontal vector
     let mut normed_local_del = norm_vector(&local_del);
 
-    // Calculate the magnetic field vector at the geocentric spherical range/beam position in
-    // local south/east/vertical coordinates
-    let b_vec = igrf_magnetic_components(year, &cell_geoc)?;
+    // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
+    let igrf_field = declination(cell_geoc[1], cell_geoc[0], cell_geoc[2] as u32, Date::from_calendar_date(year, time::Month::January, 1)?)?;
+
+    // Convert from north/east/down coordinates to south/east/up
+    let b_field = Coor4D::raw(-igrf_field.x, igrf_field.y, -igrf_field.z, 0.0);
 
     // Normalize the magnetic field vector
-    let normed_b = norm_vector(b_vec);
+    let normed_b = norm_vector(&b_field);
 
     // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
     // orthogonal to the magnetic field at the range/beam position
@@ -298,10 +303,7 @@ pub fn rpos_inv_mag(
     // Normalize the new radar-to-range/beam vector
     normed_local_del = norm_vector(&normed_local_del);
 
-    // Calculate the elevation angle of the orthogonal radar-to-range/beam vector
-    let elevation = normed_local_del[2].atan2(
-        normed_local_del[0] * normed_local_del[0] + normed_local_del[1] * normed_local_del[1],
-    );
+    // Calculate the azimuth angle of the orthogonal radar-to-range/beam vector
     let azimuth = normed_local_del[1].atan2(-normed_local_del[0]);
 
     // Calculate virtual height of range/beam position
@@ -310,14 +312,12 @@ pub fn rpos_inv_mag(
     // TODO: Accept old_aacgm option
     // Convert range/beam position from geocentric lat/lon at virtual height to AACGM magnetic
     // lat/lon
-    let (mag_lat, mag_lon) = aacgm_v2_convert(spherical_lat, spherical_lon, virtual_height, 0)?;
+    let (mag_lat, mag_lon) = aacgm_v2_convert(cell_geoc[1], cell_geoc[0], virtual_height, 0)?;
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
     let (pointing_lat, pointing_lon) = fieldpoint_sphere(
-        spherical_lat,
-        spherical_lon,
-        spherical_alt,
+        cell_geoc,
         azimuth,
         range_sep,
     );
@@ -339,5 +339,5 @@ pub fn rpos_inv_mag(
     // coordinates
     let azimuth = fieldpoint_azimuth(mag_lat, mag_lon, pointing_mag_lat, pointing_mag_lon);
 
-    Ok(azimuth)
+    Ok((mag_lat, mag_lon, azimuth))
 }

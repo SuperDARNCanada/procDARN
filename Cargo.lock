@@ -114,10 +114,12 @@ dependencies = [
  "dmap",
  "geodesy",
  "git2",
+ "igrf",
  "is_close",
  "itertools",
  "rayon",
  "rust-embed",
+ "time",
 ]
 
 [[package]]
@@ -388,6 +390,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deranged"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f32d04922c60427da6f9fef14d042d9edddef64cb9d4ce0d64d0685fbeb1fd3"
+dependencies = [
+ "powerfmt",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -595,6 +606,16 @@ checksum = "7d20d6b07bfbc108882d88ed8e37d39636dcc260e15e30c45e6ba089610b917c"
 dependencies = [
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "igrf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeb750ac62b7b81c05b0090d0fc42cdab0ec685835ee6a83a51aad21a15fc79a"
+dependencies = [
+ "thiserror",
+ "time",
 ]
 
 [[package]]
@@ -834,6 +855,12 @@ checksum = "38f6d39893cca0701371e3c27294f09797214b86f1fb951b89ade8ec04e2abab"
 dependencies = [
  "plotters-backend",
 ]
+
+[[package]]
+name = "powerfmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "proc-macro2"
@@ -1083,6 +1110,24 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "time"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4a34ab300f2dee6e562c10a046fc05e358b29f9bf92277f30c3c8d82275f6f5"
+dependencies = [
+ "deranged",
+ "powerfmt",
+ "serde",
+ "time-core",
+]
+
+[[package]]
+name = "time-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "tinytemplate"

@@ -73,6 +73,7 @@ impl RadarScan {
             // keep beams from self.beams that are in beam_list at position beam_num
             self.beams = self
                 .beams
+                .clone()
                 .into_iter()
                 .filter(|beam| {
                     beam_list
@@ -97,6 +98,7 @@ impl RadarScan {
     pub fn exclude_outofscan(&mut self) {
         self.beams = self
             .beams
+            .clone()
             .into_iter()
             .filter(|beam| beam.scan >= 0)
             .collect();

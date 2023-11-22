@@ -1,6 +1,6 @@
 use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
-use crate::utils::rpos::rpos_range_beam_azimuth_elevation;
+use crate::utils::rpos::{rpos_range_beam_azimuth_elevation, rpos_inv_mag};
 use crate::utils::scan::{RadarBeam, RadarScan};
 use std::f64::consts::PI;
 
@@ -195,8 +195,8 @@ impl GridTable {
         // TODO: Convert tval to year, month, day, hour, minute, seconds
 
         for range in 0..grid_beam.num_ranges {
-            // TODO: Calculate geographic azimuth and elevation
-            rpos_range_beam_azimuth_elevation(
+            // Calculate geographic azimuth and elevation to scatter point
+            let (azimuth_geo, elevation_geo) = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
                 range,
                 year,
@@ -206,10 +206,10 @@ impl GridTable {
                 rx_rise,
                 altitude,
                 chisham,
-            );
+            )?;
 
-            // TODO: Calculate magnetic latitude and longitude
-            rpos_inv_mag(
+            // Calculate magnetic latitude, longitude, and azimuth of scatter point
+            let (mag_lat, mut mag_lon, mut azimuth_mag) = rpos_inv_mag(
                 grid_beam.beam,
                 range,
                 year,
@@ -220,20 +220,58 @@ impl GridTable {
                 altitude,
                 chisham,
                 old_aacgm,
-            );
+            )?;
 
-            // TODO: Ensure magnetic azimuth and longitude between 0-360 degrees
-            // TODO: Calculate magnetic grid cell latitude (eg, 72.1->72.5, 57.8->57.5, etc)
-            // TODO: Calculate magnetic grid longitude spacing at grid latitude
-            // TODO: Calculate magnetic grid cell longitude
-            // TODO: Calculate reference number for cell
-            // TODO: Find index of GridPoint corresponding to reference number for cell, make new GridPoint if none found
-            // TODO: Update the total number of range gates that map to GridPoint (GridPoint.max)
-            // TODO: Set magnetic lat/lon for GridPoint
-            // TODO: Set index, magnetic azimuth, inertial velocity correction factor of beam
-            // TODO: Return index of beam number added to self
+            // Ensure magnetic azimuth and longitude between 0-360 degrees
+            if azimuth_mag < 0.0 {
+                azimuth_mag += 360.0;
+            }
+            if mag_lon < 0.0 {
+                mag_lon += 360.0;
+            }
+
+            // Calculate magnetic grid cell latitude, (e.g. 72.1->72.5, 57.8->57.5, etc)
+            let grid_lat: f64;
+            if mag_lat > 0.0 {
+                grid_lat = mag_lat.floor() + 0.5;
+            }
+            else {
+                grid_lat = mag_lat.floor() - 0.5;
+            }
+
+            // Calculate magnetic grid longitude spacing at grid latitude
+            let lon_spacing = (360.0 * (grid_lat.abs() * PI / 180.0).cos() + 0.5).floor() / 360.0;
+
+            // Calculate magnetic grid cell longitude
+            let grid_lon = (mag_lon * lon_spacing + 0.5) / lon_spacing;
+
+            // Calculate reference number for cell
+            let reference: i32;
+            if mag_lat > 0.0 {
+                reference = (1000 * mag_lat.floor() + (mag_lon * lon_spacing).floor()) as i32;
+            }
+            else {
+                reference = (-1000 * (-1 * mag_lat).floor() - (mag_lon * lon_spacing).floor()) as i32;
+            }
+
+            // Find GridPoint corresponding to reference number for cell, make new GridPoint if none found
+            let index = self.find_point(reference)?;
+            let mut point = &mut self.points[index];
+
+            // Update the total number of range gates that map to GridPoint (GridPoint.max)
+            point.reference = reference;
+
+            // Set magnetic lat/lon for GridPoint
+            point.magnetic_lat = mag_lat;
+            point.magnetic_lon = mag_lon;
+
+            // Set index, magnetic azimuth, inertial velocity correction factor of beam
+            grid_beam.index[range] = index;
+            grid_beam.azimuth[range] = azimuth_mag;
+            grid_beam.ival[range] = velocity_correction * (PI * (azimuth_geo + 90.0) / 180.0).cos();
         }
-        Ok(0)
+        // Return index of beam number added to self
+        Ok((self.num_beams - 1) as usize)
     }
 
     /// Find the index of the beam in the grid table whose beam number and operating parameters

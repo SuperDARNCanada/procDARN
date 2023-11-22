@@ -6,6 +6,7 @@ use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
+use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -55,11 +56,11 @@ struct Args {
     scan_length: Option<i32>,
 
     /// Time interval to store in each grid record, in whole seconds
-    #[arg(short = 'i', long, value_parser = clap::value_parser!(i32), default_value = "120")]
+    #[arg(short = 'i', long, value_parser, default_value = "120")]
     record_interval: i32,
 
     /// Stereo channel identifier, either 'a' or 'b'
-    #[arg(long, visible_alias = "cn")]
+    #[arg(long, visible_alias = "cn", value_parser)]
     channel: Option<char>,
 
     /// User-defined channel identifier for the output file only
@@ -67,8 +68,8 @@ struct Args {
     channel_fix: Option<char>,
 
     /// Beams to exclude, as a comma-separated list
-    #[arg(long, visible_alias = "ebm")]
-    exclude_beams: Option<String>,
+    #[arg(long, visible_alias = "ebm", value_delimiter = ',', value_parser)]
+    exclude_beams: Option<Vec<i32>>,
 
     /// Minimum range gate
     #[arg(long, visible_alias = "minrng")]
@@ -87,47 +88,47 @@ struct Args {
     max_slant_range: Option<f32>,
 
     /// Filter weighting mode
-    #[arg(long, visible_alias = "fwgt", value_parser = clap::value_parser!(i32), default_value = "0")]
+    #[arg(long, visible_alias = "fwgt", value_parser, default_value = "0")]
     filter_weighting: i32,
 
     /// Maximum power (linear scale)
-    #[arg(long, visible_alias = "pmax", value_parser = clap::value_parser!(f32), default_value = "2500")]
+    #[arg(long, visible_alias = "pmax", value_parser, default_value = "2500")]
     max_power: f32,
 
     /// Maximum velocity in m/s
-    #[arg(long, visible_alias = "vmax", value_parser = clap::value_parser!(f32), default_value = "60")]
+    #[arg(long, visible_alias = "vmax", value_parser, default_value = "60")]
     max_velocity: f32,
 
     /// Maximum spectral width in m/s
-    #[arg(long, visible_alias = "wmax", value_parser = clap::value_parser!(f32), default_value = "1000")]
+    #[arg(long, visible_alias = "wmax", value_parser, default_value = "1000")]
     max_spectral_width: f32,
 
     /// Maximum velocity error in m/s
-    #[arg(long, visible_alias = "vemax", value_parser = clap::value_parser!(f32), default_value = "200")]
+    #[arg(long, visible_alias = "vemax", value_parser, default_value = "200")]
     max_velocity_error: f32,
 
     /// Minimum power (linear scale)
-    #[arg(long, visible_alias = "pmin", value_parser = clap::value_parser!(f32), default_value = "35")]
+    #[arg(long, visible_alias = "pmin", value_parser, default_value = "35")]
     min_power: f32,
 
     /// Minimum velocity in m/s
-    #[arg(long, visible_alias = "vmin", value_parser = clap::value_parser!(f32), default_value = "3")]
+    #[arg(long, visible_alias = "vmin", value_parser, default_value = "3")]
     min_velocity: f32,
 
     /// Minimum spectral width in m/s
-    #[arg(long, visible_alias = "wmin", value_parser = clap::value_parser!(f32), default_value = "10")]
+    #[arg(long, visible_alias = "wmin", value_parser, default_value = "10")]
     min_spectral_width: f32,
 
     /// Minimum velocity error in m/s
-    #[arg(long, visible_alias = "vemin", value_parser = clap::value_parser!(f32), default_value = "0")]
+    #[arg(long, visible_alias = "vemin", value_parser, default_value = "0")]
     min_velocity_error: f32,
 
     /// Altitude at which mapping is done in km
-    #[arg(long, visible_alias = "alt", value_parser = clap::value_parser!(f32), default_value = "300")]
+    #[arg(long, visible_alias = "alt", value_parser, default_value = "300")]
     altitude: f32,
 
     /// Maximum allowed frequency variation in Hz
-    #[arg(long, visible_alias = "fmax", value_parser = clap::value_parser!(i32), default_value = "500000")]
+    #[arg(long, visible_alias = "fmax", value_parser, default_value = "500000")]
     max_frequency_var: i32,
 
     /// Flag to disable boxcar median filtering
@@ -155,7 +156,7 @@ struct Args {
     sort_params_flag: bool,
 
     /// Exclude data marked as ground scatter
-    #[arg(long, visible_alias = "ion", action = clap::ArgAction::SetTrue)]
+    #[arg(long, visible_alias = "ion", default_value = "true", action = clap::ArgAction::SetTrue)]
     ionosphere_only_flag: bool,
 
     /// Exclude data not marked as ground scatter
@@ -186,15 +187,30 @@ struct Args {
 fn bin_main() -> BinResult<()> {
     let args = Args::parse();
 
-    // If "channel" set then determine stereo channel, either 'A' or 'B'
-    // If "channel_fix" set then determine appropriate channel for output file
-    // If "exclude_beams" set then parse the beam list
+    // Determine stereo channel, either 'a' or 'b'
+    let channel = match args.channel {
+        Some(c) => set_stereo_channel(c).unwrap_or(-1),
+        None => 0
+    };
+
+    // Determine appropriate channel for output file
+    let channel_fix = match args.channel_fix {
+        Some(c) => set_fix_channel(c).unwrap_or(-1),
+        None => -1
+    };
+
     // If "interval" set convert to seconds
     // If "start_time" set convert to seconds
     // If "end_time" set convert to seconds
     // If "start_date" set convert to seconds since epoch
     // If "end_date" set convert to seconds since epoch
+
     // If "filter_weighting_mode" greater than 0, decrement it by one
+    let mut filter_weighting_mode = args.filter_weighting;
+    if filter_weighting_mode > 0 {
+        filter_weighting_mode -= 1;
+    };
+
     // Set GridTable groundscatter flag
     // Set GridTable channel number
     // Store bounding thresholds for power, velocity, velocity error, and spectral width in GridTable
