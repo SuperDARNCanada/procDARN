@@ -1,7 +1,9 @@
+use crate::error::BackscatterError;
 use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
-use crate::utils::rpos::{rpos_range_beam_azimuth_elevation, rpos_inv_mag};
+use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
+use std::error::Error;
 use std::f64::consts::PI;
 
 pub const VELOCITY_ERROR_MIN: f64 = 100.0; // m/s
@@ -22,7 +24,7 @@ pub struct GridBeam {
     pub index: Vec<i32>,   // inx in RST
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GridPoint {
     pub max: i32,                   // max in RST
     pub count: i32,                 // cnt in RST
@@ -53,7 +55,7 @@ impl GridPoint {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GridTable {
     pub start_time: f64,         // st_time in RST
     pub end_time: f64,           // ed_time in RST
@@ -176,7 +178,7 @@ impl GridTable {
         scan_beam: &RadarBeam,
         chisham: bool,
         old_aacgm: bool,
-    ) -> Result<usize, GridError> {
+    ) -> Result<usize, BackscatterError> {
         let velocity_correction: f64 = (2.0 * PI / 86400.0)
             * RADIUS_EARTH
             * 1000.0
@@ -234,8 +236,7 @@ impl GridTable {
             let grid_lat: f64;
             if mag_lat > 0.0 {
                 grid_lat = mag_lat.floor() + 0.5;
-            }
-            else {
+            } else {
                 grid_lat = mag_lat.floor() - 0.5;
             }
 
@@ -248,10 +249,10 @@ impl GridTable {
             // Calculate reference number for cell
             let reference: i32;
             if mag_lat > 0.0 {
-                reference = (1000 * mag_lat.floor() + (mag_lon * lon_spacing).floor()) as i32;
-            }
-            else {
-                reference = (-1000 * (-1 * mag_lat).floor() - (mag_lon * lon_spacing).floor()) as i32;
+                reference = (1000.0 * mag_lat.floor() + (mag_lon * lon_spacing).floor()) as i32;
+            } else {
+                reference =
+                    (-1000.0 * (-1.0 * mag_lat).floor() - (mag_lon * lon_spacing).floor()) as i32;
             }
 
             // Find GridPoint corresponding to reference number for cell, make new GridPoint if none found
@@ -266,9 +267,10 @@ impl GridTable {
             point.magnetic_lon = mag_lon;
 
             // Set index, magnetic azimuth, inertial velocity correction factor of beam
-            grid_beam.index[range] = index;
-            grid_beam.azimuth[range] = azimuth_mag;
-            grid_beam.ival[range] = velocity_correction * (PI * (azimuth_geo + 90.0) / 180.0).cos();
+            grid_beam.index[range as usize] = index as i32;
+            grid_beam.azimuth[range as usize] = azimuth_mag;
+            grid_beam.ival[range as usize] =
+                velocity_correction * (PI * (azimuth_geo + 90.0) / 180.0).cos();
         }
         // Return index of beam number added to self
         Ok((self.num_beams - 1) as usize)
@@ -344,38 +346,38 @@ impl GridTable {
                 }
 
                 // Get grid cell of radar beam/gate measurement
-                let mut grid_cell = &self.points[grid_beam.index[range] as usize];
+                let mut grid_cell = self.points[grid_beam.index[range] as usize];
 
                 // Add magnetic azimuth of radar beam/gate measurement
-                *grid_cell.azimuth += grid_beam.azimuth[range];
+                grid_cell.azimuth += grid_beam.azimuth[range];
 
                 if iflg == 0 {
-                    *grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
+                    grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
                         * (grid_beam.azimuth[range] * PI / 180.).cos()
                         / (velocity_error * velocity_error);
-                    *grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
+                    grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
                         * (grid_beam.azimuth[range] * PI / 180.).sin()
                         / (velocity_error * velocity_error);
                 } else {
-                    *grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
+                    grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
                         * (grid_beam.azimuth[range] * PI / 180.).cos()
                         / (velocity_error * velocity_error);
-                    *grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
+                    grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
                         * (grid_beam.azimuth[range] * PI / 180.).sin()
                         / (velocity_error * velocity_error);
                 }
 
-                *grid_cell.power_median +=
+                grid_cell.power_median +=
                     scan_beam.cells[range].power_lin / (power_lin_error * power_lin_error);
-                *grid_cell.spectral_width_median +=
+                grid_cell.spectral_width_median +=
                     scan_beam.cells[range].spectral_width_lin / (width_lin_error * width_lin_error);
 
-                *grid_cell.velocity_stddev /= velocity_error * velocity_error;
-                *grid_cell.power_stddev /= power_lin_error * power_lin_error;
-                *grid_cell.spectral_width_stddev /= width_lin_error * width_lin_error;
-                *grid_cell.count += 1;
+                grid_cell.velocity_stddev /= velocity_error * velocity_error;
+                grid_cell.power_stddev /= power_lin_error * power_lin_error;
+                grid_cell.spectral_width_stddev /= width_lin_error * width_lin_error;
+                grid_cell.count += 1;
             }
         }
 

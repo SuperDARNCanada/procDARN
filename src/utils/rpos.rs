@@ -3,8 +3,8 @@ use crate::gridding::grid_table::RADIUS_EARTH;
 use crate::utils::hdw::HdwInfo;
 use geodesy::prelude::*;
 use igrf::declination;
-use time::Date;
 use std::f64::consts::PI;
+use time::Date;
 
 /// Normalize a vector.
 fn norm_vector(v: &Coor4D) -> Coor4D {
@@ -88,7 +88,8 @@ fn slant_range(
 ) -> f64 {
     let lag_to_first_range = first_range * 20.0 / 3.0;
     let sample_separation = range_sep * 20.0 / 3.0;
-    (lag_to_first_range - rx_rise + (range_gate - 1) * sample_separation + range_edge) * 0.15
+    (lag_to_first_range - rx_rise + (range_gate as f64 - 1.0) * sample_separation + range_edge)
+        * 0.15
 }
 
 /// This function converts a gate/beam coordinate to geographic position. The height of the
@@ -112,7 +113,7 @@ fn rpos_geo(
 
     if !center {
         beam_edge = (-0.5 * hdw.beam_separation) as f64;
-        range_edge = -0.5 * range_sep * 20 / 3;
+        range_edge = -0.5 * range_sep * 20.0 / 3.0;
     }
 
     let rx_rise = match rx_rise_time {
@@ -120,7 +121,7 @@ fn rpos_geo(
         _ => rx_rise_time,
     };
 
-    let offset = hdw.max_num_beams / 2.0 - 0.5;
+    let offset = hdw.max_num_beams as f64 / 2.0 - 0.5;
 
     // Calculate deviation from boresight in degrees
     let psi = hdw.beam_separation * (beam_num - offset) + beam_edge + hdw.boresight_shift;
@@ -134,7 +135,7 @@ fn rpos_geo(
     if altitude < 90.0 {
         field_point_height = -RADIUS_EARTH
             + ((RADIUS_EARTH * RADIUS_EARTH)
-                + 2 * distance * RADIUS_EARTH * (altitude * PI / 180.0).sin()
+                + 2.0 * distance * RADIUS_EARTH * (altitude * PI / 180.0).sin()
                 + distance * distance)
                 .sqrt();
     } else {
@@ -203,7 +204,12 @@ pub fn rpos_range_beam_azimuth_elevation(
     let mut normed_local_del = norm_vector(&local_del);
 
     // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
-    let igrf_field = declination(cell_geoc[1], cell_geoc[0], cell_geoc[2] as u32, Date::from_calendar_date(year, time::Month::January, 1)?)?;
+    let igrf_field = declination(
+        cell_geoc[1],
+        cell_geoc[0],
+        cell_geoc[2] as u32,
+        Date::from_calendar_date(year, time::Month::January, 1)?,
+    )?;
 
     // Convert from north/east/down coordinates to south/east/up
     let b_field = Coor4D::raw(-igrf_field.x, igrf_field.y, -igrf_field.z, 0.0);
@@ -287,7 +293,12 @@ pub fn rpos_inv_mag(
     let mut normed_local_del = norm_vector(&local_del);
 
     // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
-    let igrf_field = declination(cell_geoc[1], cell_geoc[0], cell_geoc[2] as u32, Date::from_calendar_date(year, time::Month::January, 1)?)?;
+    let igrf_field = declination(
+        cell_geoc[1],
+        cell_geoc[0],
+        cell_geoc[2] as u32,
+        Date::from_calendar_date(year, time::Month::January, 1)?,
+    )?;
 
     // Convert from north/east/down coordinates to south/east/up
     let b_field = Coor4D::raw(-igrf_field.x, igrf_field.y, -igrf_field.z, 0.0);
@@ -316,11 +327,7 @@ pub fn rpos_inv_mag(
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
-    let (pointing_lat, pointing_lon) = fieldpoint_sphere(
-        cell_geoc,
-        azimuth,
-        range_sep,
-    );
+    let (pointing_lat, pointing_lon) = fieldpoint_sphere(cell_geoc, azimuth, range_sep);
 
     // TODO: Accept old_aacgm option
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
