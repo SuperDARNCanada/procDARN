@@ -1,13 +1,15 @@
 // use backscatter_rs::gridding::grid::{grid_fitacf_record, GridError};
+use backscatter_rs::error::BackscatterError;
 use backscatter_rs::gridding::grid_table::GridTable;
 use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
 use backscatter_rs::utils::hdw::HdwInfo;
-use chrono::{Duration, NaiveDateTime};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 use clap::{value_parser, Parser};
 use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
+use backscatter_rs::utils::scan::RadarScan;
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -369,23 +371,45 @@ fn bin_main() -> BinResult<()> {
             // time, so start_time needs to be adjusted
             if num_averages > 1 {
                 match args.scan_length {
-                    Some(x) => { start_time -= Duration::from_secs(x as u64) },
-                    None => { start_time -= Duration::from_secs(15 + current_records[0].end_time - current_records[0].start_time)}
+                    Some(x) => start_time -= Duration::from_secs(x as u64),
+                    None => {
+                        start_time -= Duration::from_secs(
+                            15 + current_records[0].end_time - current_records[0].start_time,
+                        )
+                    }
                 }
             }
         }
+        let first_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
 
-        let hdw = HdwInfo::new(rec.station_id, file_datetime)
-            .map_err(|e| GridError::Message(e.details))?;
-
-        // Grid the records!
-        let grid_records: Vec<GridRecord> = fitacf_records
-            .par_iter()
-            .map(|rec| grid_fitacf_record(rec, &hdw).expect("Unable to fit record"))
-            .collect();
-
-        // Write to file
-        to_file(args.outfile, &grid_records)?;
+        // let first_matching_record_idx = fitacf_records
+        //     .iter()
+        //     .position(|&r| {
+        //         NaiveDate::from_ymd_opt(r.year as i32, r.month as u32, r.day as u32)
+        //             .unwrap()
+        //             .and_hms_micro_opt(
+        //                 r.hour as u32,
+        //                 r.minute as u32,
+        //                 r.second as u32,
+        //                 r.microsecond as u32,
+        //             )
+        //             .unwrap()
+        //             > start_time
+        //     })
+        //     .ok_or(GridError::Message("No record "));
+        //
+        //
+        // let hdw = HdwInfo::new(rec.station_id, file_datetime)
+        //     .map_err(|e| GridError::Message(e.details))?;
+        //
+        // // Grid the records!
+        // let grid_records: Vec<GridRecord> = fitacf_records
+        //     .par_iter()
+        //     .map(|rec| grid_fitacf_record(rec, &hdw).expect("Unable to fit record"))
+        //     .collect();
+        //
+        // // Write to file
+        // to_file(args.outfile, &grid_records)?;
     }
 
     Ok(())
