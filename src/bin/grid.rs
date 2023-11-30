@@ -3,13 +3,14 @@ use backscatter_rs::error::BackscatterError;
 use backscatter_rs::gridding::grid_table::GridTable;
 use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
 use backscatter_rs::utils::hdw::HdwInfo;
+use backscatter_rs::utils::scan::RadarScan;
+use backscatter_rs::utils::search::fit_seek;
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use clap::{value_parser, Parser};
 use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
-use backscatter_rs::utils::scan::RadarScan;
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -51,7 +52,7 @@ struct Args {
     end_date: Option<String>,
 
     /// Use interval of length HH:MM
-    #[arg(long, visible_alias = "ex")]
+    #[arg(long, visible_alias = "ex", conflicts_with_all = &["end_time", "end_date"])]
     interval: Option<String>,
 
     /// Scan length specification in whole seconds, overriding the scan flag
@@ -300,7 +301,7 @@ fn bin_main() -> BinResult<()> {
         num_averages = 1;
     }
     // Preallocate memory for a vector of records that will be boxcar filtered
-    let mut current_records: Vec<&FitacfRecord> = Vec::with_capacity(num_averages as usize);
+    let mut current_scans: Vec<&RadarScan> = Vec::with_capacity(num_averages as usize);
 
     let mut found_record = false;
     let mut index = 0;
@@ -309,54 +310,44 @@ fn bin_main() -> BinResult<()> {
         let fitacf = File::open(infile)?;
         let fitacf_records = FitacfRecord::read_records(fitacf)?;
 
-        current_records[index] = &fitacf_records[0];
-        let file_datetime = NaiveDateTime::parse_from_str(
-            format!(
-                "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
-                current_records[0].year,
-                current_records[0].month,
-                current_records[0].day,
-                current_records[0].hour,
-                current_records[0].minute,
-                current_records[0].second
-            )
-            .as_str(),
-            "%Y%m%d %H:%M:%S",
-        )
-        .map_err(|_| GridError::Message("Unable to interpret record timestamp".to_string()))?;
+        // Get the first scan from the file
+        let first_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
+        if first_scan.is_err() {
+            eprintln!(format!("Unable to get first scan from {:?}", infile));
+            continue;
+        }
+
+        current_scans[index] = &first_scan.unwrap();
+        let file_datetime =
+            NaiveDateTime::from_timestamp_micros(current_scans[index].start_time * 1000.0 as i64);
 
         // Determine the starting time for gridding based on the record and input options
-        let mut start_time;
+        let mut start_time: NaiveDateTime;
         if let (None, None) = (args.start_date, args.start_time) {
-            start_time = NaiveDateTime::parse_from_str(
-                format!(
-                    "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
-                    current_records[0].year,
-                    current_records[0].month,
-                    current_records[0].day,
-                    current_records[0].hour,
-                    current_records[0].minute,
-                    current_records[0].second
-                )
-                .as_str(),
-                "%Y%m%d %H:%M",
-            )
-            .map_err(|_| GridError::Message("Unable to interpret record timestamp".to_string()))?;
+            match NaiveDateTime::from_timestamp_micros(current_scans[0].start_time * 1000.0 as i64)
+            {
+                Some(t) => start_time = t,
+                None => panic!("Invalid timestamp in first scan"),
+            }
+            found_record = true;
         } else {
             let date_string = match args.start_date {
                 Some(d) => format!("{}", d),
-                None => format!(
-                    "{:4}{:0>2}{:0>2}",
-                    current_records[0].year, current_records[0].month, current_records[0].day
-                ),
+                None => NaiveDateTime::from_timestamp_micros(
+                    current_scans[0].start_time * 1000.0 as i64,
+                )?
+                .format("%Y%m%d")
+                .to_string(),
             };
 
             let time_string = match args.start_time {
                 Some(t) => format!("{}", t),
-                None => format!(
-                    "{:0>2}:{:0>2}:{:0>2}",
-                    current_records[0].hour, current_records[0].minute, current_records[0].second
-                ),
+                // The None branch truncates back to the start of the minute
+                None => NaiveDateTime::from_timestamp_micros(
+                    current_scans[0].start_time * 1000.0 as i64,
+                )?
+                .format("%H:%M")
+                .to_string(),
             };
 
             start_time = NaiveDateTime::parse_from_str(
@@ -374,14 +365,73 @@ fn bin_main() -> BinResult<()> {
                     Some(x) => start_time -= Duration::from_secs(x as u64),
                     None => {
                         start_time -= Duration::from_secs(
-                            15 + current_records[0].end_time - current_records[0].start_time,
+                            15 + current_scans[0].end_time - current_scans[0].start_time,
                         )
                     }
                 }
             }
-        }
-        let first_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
 
+            // Find the first record which occurs after the grid start time, if any
+            let mut record_idx: Option<usize> = None;
+            if let Some((rec, idx)) = fit_seek(&fitacf_records, start_time) {
+                let first_matching_record = rec;
+                record_idx = Some(idx);
+            } else {
+                eprintln!(
+                    "Ignoring file {:?} as it ends before requested start time",
+                    infile
+                );
+                continue;
+            }
+            found_record = true;
+
+            // If using scan flag, go to the next beginning of the next scan
+            if let None = args.scan_length {
+                record_idx = fitacf_records[record_idx..]
+                    .iter()
+                    .position(|rec| rec.scan_flag == 1);
+            }
+
+            // Read the first full scan of data corresponding to grid start datetime
+            current_scans[0] = match record_idx {
+                Some(i) => &RadarScan::get_first_scan(&fitacf_records[i..], args.scan_length)?,
+                None => &RadarScan::get_first_scan(&fitacf_records, args.scan_length)?,
+            };
+        }
+
+        if found_record {
+            let end_time = match args.end_time {
+                Some(t) => {
+                    let time_string = format!("{}", t);
+                    let date_string = match args.end_date {
+                        Some(d) => format!("{}", d),
+                        None => NaiveDateTime::from_timestamp_micros(
+                            current_scans[0].start_time * 1000.0 as i64,
+                        )?
+                        .format("%Y%m%d")
+                        .to_string(),
+                    };
+                    NaiveDateTime::parse_from_str(
+                        format!("{} {}", date_string, time_string).as_str(),
+                        "%Y%m%d %H:%M",
+                    )
+                    .map_err(|_| {
+                        GridError::Message(
+                            "Unable to parse end date and/or time from options".to_string(),
+                        )
+                    })?
+                }
+                None => match args.interval {
+                    Some(x) => {
+                        start_time
+                            + Duration::from_secs(
+                                NaiveDateTime::parse_from_str(x?, "%H:%M")?.timestamp(),
+                            )
+                    }
+                    None => panic!("No end time or interval specified for grid"),
+                },
+            };
+        }
         // let first_matching_record_idx = fitacf_records
         //     .iter()
         //     .position(|&r| {

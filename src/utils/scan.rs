@@ -112,12 +112,13 @@ impl RadarScan {
     /// to determine the end of the scan.
     /// Called FitReadRadarScan in RST.
     pub fn get_first_scan(
-        fit_records: &Vec<FitacfRecord>,
+        fit_records: &[FitacfRecord],
         scan_length: Option<u32>,
     ) -> Result<RadarScan, BackscatterError> {
+        let mut scan_rec: RadarScan;
         for i in 0..fit_records.len() {
             let rec = &fit_records[i];
-            let mut scan_rec = RadarScan {
+            scan_rec = RadarScan {
                 station_id: rec.station_id as i32,
                 version_major: rec.radar_revision_major as i32,
                 version_minor: rec.radar_revision_minor as i32,
