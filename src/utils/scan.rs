@@ -61,32 +61,17 @@ impl RadarScan {
         self.beams.clear();
     }
 
-    /// Keeps beams whose number have index of beam_num in beam_list.
+    /// Remove beams whose beam number is in beam_list
     /// Called RadarScanResetBeam in RST
-    pub fn reset_beams(
-        &mut self,
-        beam_list: Vec<i32>,
-        beam_num: i32,
-    ) -> Result<(), BackscatterError> {
-        if beam_num == 0 {
-            Err(BackscatterError {
-                details: format!("Bad beam_num {}, must be greater than zero", beam_num),
-            })
-        } else {
-            // keep beams from self.beams that are in beam_list at position beam_num
-            self.beams = self
-                .beams
-                .clone()
-                .into_iter()
-                .filter(|beam| {
-                    beam_list
-                        .iter()
-                        .position(|&x| x == beam.beam)
-                        .is_some_and(|x| x as i32 == beam_num)
-                })
-                .collect();
-            Ok(())
-        }
+    pub fn reset_beams(&mut self, beam_list: Vec<i32>) -> Result<(), BackscatterError> {
+        // remove beams from self.beams that are in beam_list
+        self.beams = self
+            .beams
+            .clone()
+            .into_iter()
+            .filter(|beam| !beam_list.contains(&beam.beam))
+            .collect();
+        Ok(())
     }
 
     /// Called RadarScanAddBeam in RST

@@ -3,9 +3,15 @@ use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
+use chrono::{NaiveDate, NaiveDateTime};
+use dmap::formats::GridRecord;
+use dmap::{DmapType, RawDmapScalar, RawDmapVector};
+use std::collections::HashMap;
 use std::error::Error;
 use std::f64::consts::PI;
 
+pub const GRID_REVISION_MAJOR: i32 = 2;
+pub const GRID_REVISION_MINOR: i32 = 0;
 pub const VELOCITY_ERROR_MIN: f64 = 100.0; // m/s
 pub const POWER_LIN_ERROR_MIN: f64 = 1.0; // a.u. in linear scale
 pub const WIDTH_LIN_ERROR_MIN: f64 = 1.0; // m/s
@@ -410,5 +416,88 @@ impl GridTable {
         self.num_scans += 1;
 
         Ok(())
+    }
+
+    /// Converts the GridTable to a GridRecord for writing to file.
+    /// Equivalent to GridTableWrite in RST.
+    pub fn to_dmap_record(&self) -> Result<GridRecord, GridError> {
+        let mut scalars: HashMap<String, RawDmapScalar>::new();
+        let mut vectors: HashMap<String, RawDmapVector>::new();
+
+        let start_time = NaiveDateTime::from_timestamp_micros(self.start_time * 1000.0 as i64)?;
+        scalars.insert(
+            "start.year",
+            start_time.format("%Y").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "start.month",
+            start_time.format("%m").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "start.day",
+            start_time.format("%d").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "start.hour",
+            start_time.format("%H").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "start.minute",
+            start_time.format("%M").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "start.second",
+            start_time.format("%S.%.6f").to_string().parse::<f64>()?,
+        );
+
+        let end_time = NaiveDateTime::from_timestamp_micros(self.end_time * 1000.0 as i64)?;
+        scalars.insert(
+            "end.year",
+            end_time.format("%Y").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "end.month",
+            end_time.format("%m").to_string().parse::<i16>()?,
+        );
+        scalars.insert("end.day", end_time.format("%d").to_string().parse::<i16>()?);
+        scalars.insert(
+            "end.hour",
+            end_time.format("%H").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "end.minute",
+            end_time.format("%M").to_string().parse::<i16>()?,
+        );
+        scalars.insert(
+            "end.second",
+            end_time.format("%S.%.6f").to_string().parse::<f64>()?,
+        );
+
+        // Now ready the vector fields
+        vectors.insert("stid", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.station_id as i16)] });
+        vectors.insert("channel", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.channel as i16)] });
+        vectors.insert("nvec", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.num_points_npnt as i16)] });
+        vectors.insert("freq", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.freq as f32)] });
+        vectors.insert("major.revision", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(GRID_REVISION_MAJOR as i16)] });
+        vectors.insert("minor.revision", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(GRID_REVISION_MINOR as i16)] });
+        vectors.insert("program.id", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.program_id as i16)] });
+        vectors.insert("noise.mean", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.noise_mean as f32)] });
+        vectors.insert("noise.sd", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.noise_stddev as f32)] });
+        vectors.insert("gsct", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.groundscatter as i16)] });
+        vectors.insert("v.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_velocity as f32)] });
+        vectors.insert("v.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_velocity as f32)] });
+        vectors.insert("p.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_power as f32)] });
+        vectors.insert("p.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_power as f32)] });
+        vectors.insert("w.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_spectral_width as f32)] });
+        vectors.insert("w.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_spectral_width as f32)] });
+        vectors.insert("ve.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_velocity_error as f32)] });
+        vectors.insert("ve.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_velocity_error as f32)] });
+
+        // These vector fields require accessing the points of grid_table
+
+        if self.num_points_npnt != 0 {
+            vectors.insert("vector.", RawDmapVector { mode: 7, dimensions: vec![self.num_points_npnt], data: self.latitude})
+        }
+        GridRecord::new(scalars, vectors)
     }
 }
