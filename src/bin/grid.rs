@@ -1,13 +1,12 @@
-// use backscatter_rs::gridding::grid::{grid_fitacf_record, GridError};
-use backscatter_rs::error::BackscatterError;
+use backscatter_rs::gridding::grid::{check_operational_params, exclude_range};
 use backscatter_rs::gridding::grid_table::GridTable;
 use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
 use backscatter_rs::utils::hdw::HdwInfo;
 use backscatter_rs::utils::scan::RadarScan;
 use backscatter_rs::utils::search::fit_seek;
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{Duration, NaiveDateTime};
 use clap::{value_parser, Parser};
-use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
+use dmap::formats::{to_file, DmapRecord, FitacfRecord, GridRecord};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
@@ -283,7 +282,7 @@ fn bin_main() -> BinResult<()> {
     };
 
     // Store bounding thresholds for power, velocity, velocity error, and spectral width in GridTable
-    if args.op_param_flag {
+    if !args.no_limits_flag {
         grid_table.min_power = args.min_power;
         grid_table.min_velocity = args.min_velocity;
         grid_table.min_spectral_width = args.min_spectral_width;
@@ -310,36 +309,39 @@ fn bin_main() -> BinResult<()> {
     let mut record_idx: Option<usize> = None;
     let mut end_time: NaiveDateTime;
     let mut hdw_info: Option<HdwInfo>;
+    let mut records_for_file: Vec<GridRecord>;
 
     for infile in args.infiles.clone().into_iter() {
         let fitacf = File::open(infile)?;
         let fitacf_records = FitacfRecord::read_records(fitacf)?;
 
         // Get the first scan from the file
-        let first_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
-        if first_scan.is_err() {
+        let mut this_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
+        if this_scan.is_err() {
             eprintln!(format!("Unable to get first scan from {:?}", infile));
             continue;
         }
 
-        current_scans[index] = &first_scan.unwrap();
+        current_scans[index] = &this_scan.unwrap();
         let file_datetime =
             NaiveDateTime::from_timestamp_micros(current_scans[index].start_time * 1000.0 as i64);
 
         // Determine the starting time for gridding based on the record and input options
         let mut start_time = file_datetime?;
         if found_record == Status::NotFound {
-            if let (None, None) = (args.start_date, args.start_time) {
+            if let (None, None) = (&args.start_date, &args.start_time) {
                 match NaiveDateTime::from_timestamp_micros(
                     current_scans[0].start_time * 1000.0 as i64,
                 ) {
-                    Some(t) => start_time = t,
+                    Some(t) => {
+                        start_time = t;
+                    }
                     None => panic!("Invalid timestamp in first scan"),
                 }
                 found_record = Status::Found;
             } else {
-                let date_string = match args.start_date {
-                    Some(d) => format!("{}", d),
+                let date_string = match &args.start_date {
+                    Some(d) => d,
                     None => NaiveDateTime::from_timestamp_micros(
                         current_scans[0].start_time * 1000.0 as i64,
                     )?
@@ -347,7 +349,7 @@ fn bin_main() -> BinResult<()> {
                     .to_string(),
                 };
 
-                let time_string = match args.start_time {
+                let time_string = match &args.start_time {
                     Some(t) => format!("{}", t),
                     // The None branch truncates back to the start of the minute
                     None => NaiveDateTime::from_timestamp_micros(
@@ -406,10 +408,10 @@ fn bin_main() -> BinResult<()> {
         }
 
         if found_record == Status::Found {
-            end_time = match args.end_time {
+            end_time = match &args.end_time {
                 Some(t) => {
                     let time_string = format!("{}", t);
-                    let date_string = match args.end_date {
+                    let date_string = match &args.end_date {
                         Some(d) => format!("{}", d),
                         None => NaiveDateTime::from_timestamp_micros(
                             current_scans[0].start_time * 1000.0 as i64,
@@ -427,7 +429,7 @@ fn bin_main() -> BinResult<()> {
                         )
                     })?
                 }
-                None => match args.interval {
+                None => match &args.interval {
                     Some(x) => {
                         start_time
                             + Duration::from_secs(
@@ -445,49 +447,91 @@ fn bin_main() -> BinResult<()> {
         num_scans += 1;
 
         // Grid all data until end of gridding time or end of file
-        while first_scan.is_ok() {
-            // Exclude scatter in beams listed in args.exclude_beams: Option<Vec<i32>>
-            if let Some(b) = args.exclude_beams {
-                current_scans[index].reset_beams(b);
+        while this_scan.is_ok() {
+            // Exclude scatter in beams listed in args.exclude_beams
+            if let Some(b) = &args.exclude_beams {
+                current_scans[index].reset_beams(b)?;
             }
 
-            // TODO: Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
-            // TODO: Exclude scatter in range gates below args.min_range_gate or above args.max_range_gate
-            // TODO: Exclude groundscatter or ionospheric scatter, depending on the args given
-            // TODO: Exclude scatter outside power, velocity, spectral width, and velocity error bounds
-            // TODO: If enough scans have been loaded and args.no_limit not given,
-            //   check to make sure the first range, range separation, and transmit frequency have
-            //   not changed significantly
-            // TODO: If enough scans have been loaded, proceed with filtering and gridding
-            // TODO: Apply the boxcar median filter
-            grid_record = current_scans[index];
-
-            // If not already done, load HdwInfo for radar
-            if let None = hdw_info {
-                hdw_info = Some(HdwInfo::new(grid_record.station_id as i16, start_time)?);
+            // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
+            if args.exclude_neg_scan_flag {
+                current_scans[index].exclude_outofscan();
             }
 
-            // Test whether the grid table should be written to file
-            if grid_table.test(grid_record) {
-                // TODO: If GridTable good and grid record starts at or after start_time, write to file
-                if grid_table.start_time >= start_time.timestamp() as f64 {}
-                // TODO: Map GridTable to equal-area grid in magnetic coordinates
+            // Exclude scatter in range gates below args.min_range_gate or above args.max_range_gate
+            current_scans[index].exclude_range(
+                args.min_range_gate,
+                args.max_range_gate,
+                args.min_slant_range,
+                args.max_slant_range,
+            );
+
+            // Exclude groundscatter or ionospheric scatter, depending on the args given
+            if args.groundscatter_only_flag {
+                current_scans[index].exclude_ionospheric_scatter();
+            } else if args.ionosphere_only_flag {
+                current_scans[index].exclude_groundscatter();
             }
 
-            // If median filtering, update index
+            // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
+            if !args.no_limits_flag {
+                current_scans[index].exclude_outofbounds(&grid_table);
+            }
+
+            // If enough scans have been loaded and args.no_limit not given, check to make sure the
+            // first range, range separation, and transmit frequency have not changed significantly
+            let mut passed_check = true;
+            if num_scans >= current_scans.capacity()
+                && !args.no_limits_flag
+                && filter_weighting_mode != -1
+            {
+                passed_check = check_operational_params(&current_scans, args.max_frequency_var);
+            }
+
+            // If enough scans have been loaded, proceed with filtering and gridding
+            if passed_check && num_scans >= current_scans.capacity() {
+                // TODO: Apply the boxcar median filter
+                grid_record = current_scans[index];
+
+                // If not already done, load HdwInfo for radar
+                if let None = hdw_info {
+                    hdw_info = Some(HdwInfo::new(grid_record.station_id as i16, start_time)?);
+                }
+
+                // Test whether the grid table should be written to file
+                if grid_table.test(grid_record) {
+                    // If GridTable good and grid record starts at or after start_time, write to file
+                    if grid_table.start_time >= start_time.timestamp() as f64 {
+                        records_for_file.push(grid_table.to_dmap_record()?);
+                    }
+                }
+
+                // Map GridTable to equal-area grid in magnetic coordinates
+                grid_table.map(
+                    grid_record,
+                    &hdw_info?,
+                    args.scan_length? as i32,
+                    args.inertial_frame_flag,
+                    args.altitude as f64,
+                    args.chisham_flag,
+                    args.old_aacgm_flag,
+                )?;
+            }
+
+            // Update index
             index += 1;
             if index >= current_scans.capacity() {
                 index = 0;
             }
 
             // Get the next scan
-            first_scan = match record_idx {
-                Some(i) => &RadarScan::get_first_scan(&fitacf_records[i..], args.scan_length)?,
-                None => &RadarScan::get_first_scan(&fitacf_records, args.scan_length)?,
+            this_scan = match record_idx {
+                Some(i) => RadarScan::get_first_scan(&fitacf_records[i..], args.scan_length),
+                None => RadarScan::get_first_scan(&fitacf_records, args.scan_length),
             };
 
-            if let Ok(scan) = first_scan {
-                current_scans[index] = scan;
+            if let Ok(scan) = this_scan {
+                current_scans[index] = &scan;
             }
 
             // If scan starts after end_time, this file is done being gridded
@@ -497,8 +541,9 @@ fn bin_main() -> BinResult<()> {
 
             num_scans += 1;
         }
-        // TODO: Break out of infile loop if scan starts after end_time? Seems unnecessary
     }
 
+    // Write to file
+    to_file(args.outfile, &records_for_file)?;
     Ok(())
 }

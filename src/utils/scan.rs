@@ -1,7 +1,7 @@
 use crate::error::BackscatterError;
+use crate::gridding::grid_table::GridTable;
 use chrono::NaiveDate;
 use dmap::formats::FitacfRecord;
-use time::Month::December;
 
 #[derive(Copy, Clone, Default)]
 pub struct RadarCell {
@@ -63,7 +63,7 @@ impl RadarScan {
 
     /// Remove beams whose beam number is in beam_list
     /// Called RadarScanResetBeam in RST
-    pub fn reset_beams(&mut self, beam_list: Vec<i32>) -> Result<(), BackscatterError> {
+    pub fn reset_beams(&mut self, beam_list: &Vec<i32>) -> Result<(), BackscatterError> {
         // remove beams from self.beams that are in beam_list
         self.beams = self
             .beams
@@ -82,7 +82,8 @@ impl RadarScan {
         })
     }
 
-    /// Exclude beams that are not part of a scan
+    /// Exclude beams that are not part of a scan.
+    /// Called exclude_outofscan in radarscan.c of RST.
     pub fn exclude_outofscan(&mut self) {
         self.beams = self
             .beams
@@ -95,28 +96,31 @@ impl RadarScan {
     /// Read a full scan of data from a vector of FitacfRecords. If scan_length is Some(x), will
     /// grab the first records spanning x seconds. Otherwise, uses the scan flag in the FitacfRecords
     /// to determine the end of the scan.
-    /// Called FitReadRadarScan in RST.
+    /// Called FitReadRadarScan in fitscan.c of RST.
     pub fn get_first_scan(
         fit_records: &[FitacfRecord],
         scan_length: Option<u32>,
     ) -> Result<RadarScan, BackscatterError> {
-        let mut scan_rec: RadarScan;
-        for i in 0..fit_records.len() {
-            let rec = &fit_records[i];
-            scan_rec = RadarScan {
-                station_id: rec.station_id as i32,
-                version_major: rec.radar_revision_major as i32,
-                version_minor: rec.radar_revision_minor as i32,
-                start_time: NaiveDate::from_ymd_opt(
-                    rec.year as i32,
-                    rec.month as u32,
-                    rec.day as u32,
-                )?
+        if fit_records.len() == 0 {
+            Err(BackscatterError::new(
+                "Unable to extract scan, no records found",
+            ))
+        }
+        let mut rec = &fit_records[0];
+        let mut scan: RadarScan = RadarScan {
+            station_id: rec.station_id as i32,
+            version_major: rec.radar_revision_major as i32,
+            version_minor: rec.radar_revision_minor as i32,
+            start_time: NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
                 .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
                 .timestamp()
-                    + (rec.microsecond as f64) / 1e6,
-                ..Default::default()
-            };
+                + (rec.microsecond as f64) / 1e6,
+            ..Default::default()
+        };
+
+        for i in 0..fit_records.len() {
+            rec = &fit_records[i];
+
             let mut beam = RadarBeam {
                 time: NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
                     .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
@@ -168,8 +172,11 @@ impl RadarScan {
                 beam.cells.push(cell);
             }
 
+            // Add the beam to the scan
+            scan.beams.push(beam);
+
             // Update the end time of the scan
-            scan_rec.end_time =
+            scan.end_time =
                 NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
                     .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
                     .timestamp()
@@ -179,7 +186,7 @@ impl RadarScan {
             match scan_length {
                 // If the scan has spanned longer than scan_length
                 Some(x) => {
-                    if scan_rec.end_time - scan_rec.start_time >= x as f64 {
+                    if scan.end_time - scan.start_time >= x as f64 {
                         break;
                     }
                 }
@@ -191,6 +198,125 @@ impl RadarScan {
                 }
             }
         }
-        Ok(scan_rec)
+        Ok(scan)
+    }
+
+    /// Filters data in the scan based on optional min and max range gates or slant ranges.
+    /// Called exclude_range in make_grid.c of RST.
+    pub fn exclude_range(
+        &mut self,
+        min_range_gate: Option<i32>,
+        max_range_gate: Option<i32>,
+        min_slant_range: Option<f32>,
+        max_slant_range: Option<f32>,
+    ) {
+        let range_edge = 0;
+        for beam in self.beams.iter_mut().filter(|&b| b.beam != -1) {
+            // If either min or max slant range given, then exclude data using slant range filters
+            if min_slant_range.is_some() || max_slant_range.is_some() {
+                for rg in 0..beam.num_ranges {
+                    let slant_range = slant_range(
+                        beam.first_range,
+                        beam.range_sep,
+                        beam.rx_rise,
+                        range_edge,
+                        rg + 1,
+                    );
+                    match (min_slant_range, max_slant_range) {
+                        (Some(min), Some(max)) => {
+                            if min > slant_range || slant_range > max {
+                                beam.scatter[rg] = 0;
+                            }
+                        }
+                        (Some(min), None) => {
+                            if min > slant_range {
+                                beam.scatter[rg] = 0;
+                            }
+                        }
+                        (None, Some(max)) => {
+                            if slant_range > max {
+                                beam.scatter[rg] = 0;
+                            }
+                        }
+                        (None, None) => {}
+                    }
+                }
+            } else {
+                // Exclude data using range gate filters
+                match (min_range_gate, max_range_gate) {
+                    (Some(min), Some(max)) => {
+                        for scat in beam.scatter[..min].iter_mut() {
+                            scat = 0;
+                        }
+                        for scat in beam.scatter[max..].iter_mut() {
+                            scat = 0;
+                        }
+                    }
+                    (Some(min), None) => {
+                        for scat in beam.scatter[..min].iter_mut() {
+                            scat = 0;
+                        }
+                    }
+                    (None, Some(max)) => {
+                        for scat in beam.scatter[max..].iter_mut() {
+                            scat = 0;
+                        }
+                    }
+                    (None, None) => {}
+                }
+            }
+        }
+    }
+
+    /// Excludes ground scatter from the radar scan.
+    /// Called FilterBoundType in bound.c of RST
+    pub fn exclude_groundscatter(&mut self) {
+        for beam in self.beams.iter_mut() {
+            for rg in 0..beam.num_ranges {
+                if beam.scatter[rg] == 0 {
+                    continue;
+                }
+                if beam.cells[rg].groundscatter == 1 {
+                    beam.scatter[rg] = 0;
+                }
+            }
+        }
+    }
+
+    /// Excludes ionospheric scatter from the radar scan.
+    /// Called FilterBoundType in bound.c of RST
+    pub fn exclude_ionospheric_scatter(&mut self) {
+        for beam in self.beams.iter_mut() {
+            for rg in 0..beam.num_ranges {
+                if beam.scatter[rg] == 0 {
+                    continue;
+                }
+                if beam.cells[rg].groundscatter == 0 {
+                    beam.scatter[rg] = 0;
+                }
+            }
+        }
+    }
+
+    pub fn exclude_outofbounds(&mut self, grid_table: &GridTable) {
+        for beam in self.beams.iter_mut() {
+            for rg in 0..beam.num_ranges {
+                if beam.scatter[rg] == 0 {
+                    continue;
+                }
+                let cell = beam.cells[rg];
+                let discard_cell = cell.velocity.abs() < grid_table.min_velocity
+                    || cell.velocity.abs() > grid_table.max_velocity
+                    || cell.power_lin < grid_table.min_power
+                    || cell.power_lin > grid_table.max_power
+                    || cell.spectral_width_lin < grid_table.min_spectral_width
+                    || cell.spectral_width_lin > grid_table.max_spectral_width
+                    || cell.velocity_error < grid_table.min_velocity_error
+                    || cell.velocity_error > grid_table.max_velocity_error;
+                if discard_cell {
+                    beam.scatter[rg] = 0;
+                }
+            }
+        }
     }
 }

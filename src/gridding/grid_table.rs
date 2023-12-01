@@ -1,14 +1,14 @@
 use crate::error::BackscatterError;
 use crate::gridding::grid::GridError;
+use crate::utils::dmap::convert_to_dmapvec;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::NaiveDateTime;
 use dmap::formats::GridRecord;
-use dmap::{DmapType, RawDmapScalar, RawDmapVector};
-use std::collections::HashMap;
-use std::error::Error;
+use dmap::DmapType;
 use std::f64::consts::PI;
+use std::iter;
 
 pub const GRID_REVISION_MAJOR: i32 = 2;
 pub const GRID_REVISION_MINOR: i32 = 0;
@@ -304,7 +304,7 @@ impl GridTable {
         scan: &RadarScan,
         hdw: &HdwInfo,
         tlen: i32,
-        iflg: i32,
+        iflg: bool,
         altitude: f64,
         chisham: bool,
         old_aacgm: bool,
@@ -317,7 +317,7 @@ impl GridTable {
             self.freq = 0.0;
             self.num_scans = 0;
             self.start_time = scan.start_time.clone();
-            self.end_time = scan.end_time.clone();
+            self.end_time = scan.start_time.clone() + tlen;
             self.station_id = scan.station_id.clone();
         }
 
@@ -357,20 +357,20 @@ impl GridTable {
                 // Add magnetic azimuth of radar beam/gate measurement
                 grid_cell.azimuth += grid_beam.azimuth[range];
 
-                if iflg == 0 {
-                    grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
-                        * (grid_beam.azimuth[range] * PI / 180.).cos()
-                        / (velocity_error * velocity_error);
-                    grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
-                        * (grid_beam.azimuth[range] * PI / 180.).sin()
-                        / (velocity_error * velocity_error);
-                } else {
+                if iflg {
                     grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
                         * (grid_beam.azimuth[range] * PI / 180.).cos()
                         / (velocity_error * velocity_error);
                     grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
+                        * (grid_beam.azimuth[range] * PI / 180.).sin()
+                        / (velocity_error * velocity_error);
+                } else {
+                    grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
+                        * (grid_beam.azimuth[range] * PI / 180.).cos()
+                        / (velocity_error * velocity_error);
+                    grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
                         * (grid_beam.azimuth[range] * PI / 180.).sin()
                         / (velocity_error * velocity_error);
                 }
@@ -421,83 +421,85 @@ impl GridTable {
     /// Converts the GridTable to a GridRecord for writing to file.
     /// Equivalent to GridTableWrite in RST.
     pub fn to_dmap_record(&self) -> Result<GridRecord, GridError> {
-        let mut scalars: HashMap<String, RawDmapScalar>::new();
-        let mut vectors: HashMap<String, RawDmapVector>::new();
-
         let start_time = NaiveDateTime::from_timestamp_micros(self.start_time * 1000.0 as i64)?;
-        scalars.insert(
-            "start.year",
-            start_time.format("%Y").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "start.month",
-            start_time.format("%m").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "start.day",
-            start_time.format("%d").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "start.hour",
-            start_time.format("%H").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "start.minute",
-            start_time.format("%M").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "start.second",
-            start_time.format("%S.%.6f").to_string().parse::<f64>()?,
-        );
 
-        let end_time = NaiveDateTime::from_timestamp_micros(self.end_time * 1000.0 as i64)?;
-        scalars.insert(
-            "end.year",
-            end_time.format("%Y").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "end.month",
-            end_time.format("%m").to_string().parse::<i16>()?,
-        );
-        scalars.insert("end.day", end_time.format("%d").to_string().parse::<i16>()?);
-        scalars.insert(
-            "end.hour",
-            end_time.format("%H").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "end.minute",
-            end_time.format("%M").to_string().parse::<i16>()?,
-        );
-        scalars.insert(
-            "end.second",
-            end_time.format("%S.%.6f").to_string().parse::<f64>()?,
-        );
-
-        // Now ready the vector fields
-        vectors.insert("stid", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.station_id as i16)] });
-        vectors.insert("channel", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.channel as i16)] });
-        vectors.insert("nvec", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.num_points_npnt as i16)] });
-        vectors.insert("freq", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.freq as f32)] });
-        vectors.insert("major.revision", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(GRID_REVISION_MAJOR as i16)] });
-        vectors.insert("minor.revision", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(GRID_REVISION_MINOR as i16)] });
-        vectors.insert("program.id", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.program_id as i16)] });
-        vectors.insert("noise.mean", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.noise_mean as f32)] });
-        vectors.insert("noise.sd", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.noise_stddev as f32)] });
-        vectors.insert("gsct", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.groundscatter as i16)] });
-        vectors.insert("v.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_velocity as f32)] });
-        vectors.insert("v.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_velocity as f32)] });
-        vectors.insert("p.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_power as f32)] });
-        vectors.insert("p.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_power as f32)] });
-        vectors.insert("w.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_spectral_width as f32)] });
-        vectors.insert("w.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_spectral_width as f32)] });
-        vectors.insert("ve.min", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.min_velocity_error as f32)] });
-        vectors.insert("ve.max", RawDmapVector { mode: 7, dimensions: vec![1], data: vec![DmapType::from(self.max_velocity_error as f32)] });
+        // Find the valid points in the grid
+        let valid_points: Vec<&GridPoint> = self.points.iter().filter(|&p| p.count > 0).collect();
+        let num_points = valid_points.len();
 
         // These vector fields require accessing the points of grid_table
+        let magnetic_lat: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.magnetic_lat).collect();
+        let magnetic_lon: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.magnetic_lon).collect();
+        let azimuth: Vec<DmapType::DOUBLE> = valid_points.iter().map(|&p| p.azimuth).collect();
+        let index: Vec<DmapType::INT> = valid_points.iter().map(|&p| p.reference).collect();
+        let velocity_median: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.velocity_median).collect();
+        let velocity_stddev: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.velocity_stddev).collect();
+        let power_median: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.power_median).collect();
+        let power_stddev: Vec<DmapType::DOUBLE> =
+            valid_points.iter().map(|&p| p.power_stddev).collect();
+        let spectral_width_median: Vec<DmapType::DOUBLE> = valid_points
+            .iter()
+            .map(|&p| p.spectral_width_median)
+            .collect();
+        let spectral_width_stddev: Vec<DmapType::DOUBLE> = valid_points
+            .iter()
+            .map(|&p| p.spectral_width_stddev)
+            .collect();
+        let station_ids: Vec<DmapType::SHORT> = iter::repeat(self.station_id)
+            .take(valid_points.len())
+            .collect();
+        let channels: Vec<DmapType::SHORT> = iter::repeat(self.channel)
+            .take(valid_points.len())
+            .collect();
 
-        if self.num_points_npnt != 0 {
-            vectors.insert("vector.", RawDmapVector { mode: 7, dimensions: vec![self.num_points_npnt], data: self.latitude})
-        }
-        GridRecord::new(scalars, vectors)
+        Ok(GridRecord {
+            start_year: start_time.format("%Y").to_string().parse::<i16>()?,
+            start_month: start_time.format("%m").to_string().parse::<i16>()?,
+            start_day: start_time.format("%d").to_string().parse::<i16>()?,
+            start_hour: start_time.format("%H").to_string().parse::<i16>()?,
+            start_minute: start_time.format("%M").to_string().parse::<i16>()?,
+            start_second: start_time.format("%S.%.6f").to_string().parse::<f64>()?,
+            end_year: start_time.format("%Y").to_string().parse::<i16>()?,
+            end_month: start_time.format("%m").to_string().parse::<i16>()?,
+            end_day: start_time.format("%d").to_string().parse::<i16>()?,
+            end_hour: start_time.format("%H").to_string().parse::<i16>()?,
+            end_minute: start_time.format("%M").to_string().parse::<i16>()?,
+            end_second: start_time.format("%S.%.6f").to_string().parse::<f64>()?,
+            station_ids: convert_to_dmapvec(vec![self.station_id as i16]),
+            channels: convert_to_dmapvec(vec![self.channel as i16]),
+            num_vectors: convert_to_dmapvec(vec![num_points as i16]),
+            freq: convert_to_dmapvec(vec![self.freq as f32]),
+            grid_major_revision: convert_to_dmapvec(vec![GRID_REVISION_MAJOR as i16]),
+            grid_minor_revision: convert_to_dmapvec(vec![GRID_REVISION_MINOR as i16]),
+            program_ids: convert_to_dmapvec(vec![self.program_id as i16]),
+            noise_mean: convert_to_dmapvec(vec![self.noise_mean as f32]),
+            noise_stddev: convert_to_dmapvec(vec![self.noise_stddev as f32]),
+            groundscatter: convert_to_dmapvec(vec![self.groundscatter as i16]),
+            velocity_min: convert_to_dmapvec(vec![self.min_velocity as f32]),
+            velocity_max: convert_to_dmapvec(vec![self.max_velocity as f32]),
+            power_min: convert_to_dmapvec(vec![self.min_power as f32]),
+            power_max: convert_to_dmapvec(vec![self.min_power as f32]),
+            spectral_width_min: convert_to_dmapvec(vec![self.min_spectral_width as f32]),
+            spectral_width_max: convert_to_dmapvec(vec![self.max_spectral_width as f32]),
+            velocity_error_min: convert_to_dmapvec(vec![self.min_velocity_error as f32]),
+            velocity_error_max: convert_to_dmapvec(vec![self.max_velocity_error as f32]),
+            magnetic_lat: convert_to_dmapvec(magnetic_lat),
+            magnetic_lon: convert_to_dmapvec(magnetic_lon),
+            magnetic_azi: convert_to_dmapvec(azimuth),
+            station_id_vector: convert_to_dmapvec(station_ids),
+            channel_vector: convert_to_dmapvec(channels),
+            grid_cell_index: convert_to_dmapvec(index),
+            velocity_median: convert_to_dmapvec(velocity_median),
+            velocity_stddev: convert_to_dmapvec(velocity_stddev),
+            power_median: convert_to_dmapvec(power_median),
+            power_stddev: convert_to_dmapvec(power_stddev),
+            spectral_width_median: convert_to_dmapvec(spectral_width_median),
+            spectral_width_stddev: convert_to_dmapvec(spectral_width_stddev),
+        })
     }
 }
