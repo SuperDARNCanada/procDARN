@@ -1,8 +1,9 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::RangeNode;
+use crate::utils::dmap::convert_to_dmapvec;
 use crate::utils::hdw::HdwInfo;
 use dmap::formats::{FitacfRecord, RawacfRecord};
-use dmap::{DmapVec, InDmap};
+use dmap::DmapVec;
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
 
@@ -424,13 +425,6 @@ pub fn determinations(
             sigma_xcf_std_dev: Some(float_zeros),
             phi_xcf_std_dev: Some(convert_to_dmapvec(xcf_phi_std_dev)),
         })
-    }
-}
-
-fn convert_to_dmapvec<T: InDmap>(vals: Vec<T>) -> DmapVec<T> {
-    DmapVec {
-        dimensions: vec![vals.len() as i32],
-        data: vals,
     }
 }
 
