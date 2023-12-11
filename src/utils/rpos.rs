@@ -78,18 +78,20 @@ fn local_to_cartesian(loc: &Coor4D, v: &Coor4D) -> Coor4D {
     Coor4D::raw(rx, ry, rz, 0.0)
 }
 
-/// Calculates the slant range to a range gate
-fn slant_range(
-    first_range: f64,
-    range_sep: f64,
-    rx_rise: f64,
-    range_edge: f64,
+/// Calculates the slant range to a range gate in km.
+/// Called slant_range in cnvtcoord.c of RST.
+pub fn slant_range(
+    first_range: i32,
+    range_sep: i32,
+    rx_rise: i32,
+    range_edge: i32,
     range_gate: i32,
-) -> f64 {
-    let lag_to_first_range = first_range * 20.0 / 3.0;
-    let sample_separation = range_sep * 20.0 / 3.0;
-    (lag_to_first_range - rx_rise + (range_gate as f64 - 1.0) * sample_separation + range_edge)
-        * 0.15
+) -> f32 {
+    // The next two lines truncate to integers, for some reason
+    let lag_to_first_range = first_range * 20 / 3; // microseconds
+    let sample_separation = range_sep * 20 / 3; // microseconds
+
+    (lag_to_first_range - rx_rise + (range_gate * sample_separation) + range_edge) as f32 * 0.15
 }
 
 /// This function converts a gate/beam coordinate to geographic position. The height of the

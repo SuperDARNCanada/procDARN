@@ -1,4 +1,4 @@
-use backscatter_rs::gridding::grid::{check_operational_params, exclude_range};
+use backscatter_rs::gridding::grid::check_operational_params;
 use backscatter_rs::gridding::grid_table::GridTable;
 use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
 use backscatter_rs::utils::hdw::HdwInfo;

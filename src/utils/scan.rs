@@ -1,5 +1,6 @@
 use crate::error::BackscatterError;
 use crate::gridding::grid_table::GridTable;
+use crate::utils::rpos::slant_range;
 use chrono::NaiveDate;
 use dmap::formats::FitacfRecord;
 
@@ -215,26 +216,26 @@ impl RadarScan {
             // If either min or max slant range given, then exclude data using slant range filters
             if min_slant_range.is_some() || max_slant_range.is_some() {
                 for rg in 0..beam.num_ranges {
-                    let slant_range = slant_range(
+                    let range_slant = slant_range(
                         beam.first_range,
                         beam.range_sep,
                         beam.rx_rise,
                         range_edge,
-                        rg + 1,
+                        rg,
                     );
                     match (min_slant_range, max_slant_range) {
                         (Some(min), Some(max)) => {
-                            if min > slant_range || slant_range > max {
+                            if min > range_slant || range_slant > max {
                                 beam.scatter[rg] = 0;
                             }
                         }
                         (Some(min), None) => {
-                            if min > slant_range {
+                            if min > range_slant {
                                 beam.scatter[rg] = 0;
                             }
                         }
                         (None, Some(max)) => {
-                            if slant_range > max {
+                            if range_slant > max {
                                 beam.scatter[rg] = 0;
                             }
                         }

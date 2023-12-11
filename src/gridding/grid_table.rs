@@ -250,7 +250,7 @@ impl GridTable {
             let lon_spacing = (360.0 * (grid_lat.abs() * PI / 180.0).cos() + 0.5).floor() / 360.0;
 
             // Calculate magnetic grid cell longitude
-            let grid_lon = (mag_lon * lon_spacing + 0.5) / lon_spacing;
+            let _grid_lon = (mag_lon * lon_spacing + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
             let reference: i32;
