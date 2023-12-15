@@ -1,3 +1,3 @@
-mod filter;
+pub mod filter;
 pub mod grid;
 pub mod grid_table;

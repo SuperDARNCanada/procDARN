@@ -352,7 +352,7 @@ impl GridTable {
                 }
 
                 // Get grid cell of radar beam/gate measurement
-                let mut grid_cell = self.points[grid_beam.index[range] as usize];
+                let mut grid_cell = &mut self.points[grid_beam.index[range] as usize];
 
                 // Add magnetic azimuth of radar beam/gate measurement
                 grid_cell.azimuth += grid_beam.azimuth[range];

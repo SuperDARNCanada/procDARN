@@ -1,3 +1,4 @@
+use backscatter_rs::gridding::filter::median_filter;
 use backscatter_rs::gridding::grid::check_operational_params;
 use backscatter_rs::gridding::grid_table::GridTable;
 use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
@@ -490,7 +491,21 @@ fn bin_main() -> BinResult<()> {
 
             // If enough scans have been loaded, proceed with filtering and gridding
             if passed_check && num_scans >= current_scans.capacity() {
-                // TODO: Apply the boxcar median filter
+                if filter_weighting_mode != -1 {
+                    match median_filter(
+                        filter_weighting_mode,
+                        current_scans.capacity() as i32,
+                        index as i32,
+                        15,
+                        args.sort_params_flag,
+                        &current_scans,
+                    ) {
+                        Ok(s) => {
+                            grid_record = &s;
+                        }
+                        Err(e) => GridRecord(e),
+                    }
+                }
                 grid_record = current_scans[index];
 
                 // If not already done, load HdwInfo for radar
