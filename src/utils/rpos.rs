@@ -94,11 +94,200 @@ pub fn slant_range(
     (lag_to_first_range - rx_rise + (range_gate * sample_separation) + range_edge) as f32 * 0.15
 }
 
+/// Calculate a destination point (lat, lon) from a start point, distance, and bearing in degrees
+/// East of North using the Haversine formula.
+/// Called fldpnt_sph in invmag.c of RST
+fn fieldpoint_sphere(start: Coor4D, bearing: f64, range: f64) -> (f64, f64) {
+    // start: lon, lat, alt, _
+    let start_lon = start[0];
+    let start_lat = start[1];
+    let start_alt = start[2];
+
+    // Solving spherical triangle
+    let c_side = (90.0 - start_lat) * PI / 180.0;
+    let mut a_angle: f64;
+    if bearing > 180.0 {
+        a_angle = (bearing - 360.0) * PI / 180.0;
+    } else {
+        a_angle = bearing * PI / 180.0;
+    }
+
+    let b_side = range / start_alt;
+    let mut arg = b_side.cos() * c_side.cos() + b_side.sin() * c_side.sin() * a_angle.cos();
+
+    if arg <= -1.0 {
+        arg = -1.0;
+    } else if arg >= 1.0 {
+        arg = 1.0;
+    }
+
+    let a_side = arg.acos();
+    arg = (b_side.cos() - a_side.cos() * c_side.cos()) / (a_side.sin() * c_side.sin());
+
+    if arg <= -1.0 {
+        arg = -1.0;
+    } else if arg >= 1.0 {
+        arg = 1.0;
+    }
+
+    let mut b_angle = arg.acos();
+    if a_angle < 0.0 {
+        b_angle = -b_angle;
+    }
+
+    let end_lat = 90.0 - (a_side * 180 / PI);
+    let mut end_lon = start_lon + b_angle * 180.0 / PI;
+    if end_lon < 0.0 {
+        end_lon += 360.0;
+    } else if end_lon > 360.0 {
+        end_lon -= 360.0;
+    }
+
+    (end_lat, end_lon)
+}
+
+/// Uses the Haversine formula to calculate bearing from a start point to an end point,
+/// assuming a spherical Earth.
+/// Called fldpnt_azm in invmag.c of RST
+fn fieldpoint_azimuth(start_lat: f64, start_lon: f64, end_lat: f64, end_lon: f64) -> f64 {
+    let a_side = (90.0 - end_lat) * PI / 180.0;
+    let c_side = (90.0 - start_lat) * PI / 180.0;
+    let b_angle = (end_lon - start_lon) * PI / 180.0;
+
+    let mut arg = a_side.cos() * c_side.cos() + a_side.sin() * c_side.sin() * b_angle.cos();
+    let b_side = arg.acos();
+
+    arg = (a_side.cos() - b_side.cos() * c_side.cos()) / (b_side.sin() * c_side.sin());
+    let mut a_angle = arg.acos();
+
+    if b_angle < 0.0 {
+        a_angle = -a_angle;
+    }
+
+    let mut bearing = a_angle;
+    if bearing.is_nan() {
+        bearing = 0.0;
+    }
+
+    bearing
+}
+
+/// Calculate the geocentric coordinates of a radar field point using either the standard or
+/// Chisham virtual height model.
+/// Called fldpnth in cnvtcoord.c of RST
+fn fieldpoint_height(
+    point: Coor4D,
+    bearing_off_boresight: f64,
+    boresight_bearing: f64,
+    height: f64,
+    slant_range: f64,
+    chisham: bool,
+) -> Coor4D {
+    let mut xh: f64;
+    if chisham {
+        if slant_range < 787.5 {
+            xh = 108.974 + 0.0191271 * slant_range + 6.68283e-5 * slant_range * slant_range;
+        } else if slant_range < 2137.5 {
+            xh = 384.416 - 0.17864 * slant_range + 1.81405e-4 * slant_range * slant_range;
+        } else {
+            xh = 1098.28 - 0.354557 * slant_range + 9.39961e-5 * slant_range * slant_range;
+        }
+        if slant_range < 115.0 {
+            xh = slant_range / 115.0 * 112.0;
+        }
+    } else {
+        if height <= 150.0 {
+            xh = height;
+        } else {
+            if slant_range < 600.0 {
+                xh = 115.0;
+            } else if slant_range < 800.0 {
+                xh = (slant_range - 600.0) / 200.0 * (height - 115.0) + 115.0;
+            } else {
+                xh = height;
+            }
+        }
+        if slant_range < 150.0 {
+            xh = (slant_range / 150.0) * 115.0;
+        }
+    }
+
+    let ellipse = Ellipsoid::named("WGS84")?;
+    let radar_geo = ellipse.cartesian(&point);
+
+    let radar_radius = radar_geo[2]; // Radius of Earth beneath point
+    let mut fieldpoint_radius = radar_radius; // Will update with calculations
+    let mut fieldpoint = Coor4D::default();
+
+    // This will prevent elevation angle from being NaN later on
+    let range = if slant_range == 0.0 { 0.1 } else { slant_range };
+
+    let mut fieldpoint_height = xh + 1.0; // Initialize to make the below loop a do-while loop
+    while (fieldpoint_height - xh).abs() > 0.5 {
+        fieldpoint[2] = fieldpoint_radius + xh;
+
+        // Elevation angle relative to horizon [radians]
+        let angle_above_horizon =
+            ((fieldpoint[2] * fieldpoint[2] - radar_radius * radar_radius - range * range)
+                / (2.0 * radar_radius * range))
+                .asin();
+
+        // Need to calculate actual elevation angle for 1.5-hop propagation when using Chisham model
+        // for coning angle correction
+        let xel: f64;
+        if chisham && range > 2137.5 {
+            let gamma = ((radar_radius * radar_radius + fieldpoint[2] * fieldpoint[2]
+                - range * range)
+                / (2.0 * radar_radius * fieldpoint[2]))
+                .acos();
+            let beta = (radar_radius * (gamma / 3.0).sin() / (range / 3.0)).asin();
+            xel = PI / 2 - beta - (gamma / 3.0);
+        } else {
+            xel = angle_above_horizon;
+        }
+
+        // Estimate the off-array-normal azimuth
+        let off_boresight_rad = bearing_off_boresight * PI / 180.0;
+        let boresight_bearing_rad = boresight_bearing * PI / 180.0;
+        let tan_azimuth: f64;
+        if off_boresight_rad.cos() * off_boresight_rad.cos() - xel.sin() * xel.sin() < 0.0 {
+            tan_azimuth = 1e32;
+        } else {
+            tan_azimuth = (off_boresight_rad.sin() * off_boresight_rad.sin()
+                / (off_boresight_rad.cos() * off_boresight_rad.cos() - xel.sin() * xel.sin()))
+            .sqrt();
+        }
+        let azimuth: f64;
+        if off_boresight_rad > 0.0 {
+            azimuth = tan_azimuth.atan();
+        } else {
+            azimuth = -(tan_azimuth.atan());
+        }
+
+        // Pointing azimuth in radians
+        let xal = azimuth + boresight_bearing_rad;
+
+        // Adjust azimuth and elevation for oblateness of the Earth
+        geocnvrt(point, xal, xel, ral, dummy);
+
+        // Obtain the global spherical coordinates of the field point
+        fldpnt(radar_rho, point, ral, rel, range, &fieldpoint);
+
+        // Recalculate the radius of the Earth beneath the field point
+        ellipse.geographic(&fieldpoint);
+
+        fieldpoint_height = fieldpoint[2] - fieldpoint_radius;
+    }
+
+    fieldpoint
+}
+
 /// This function converts a gate/beam coordinate to geographic position. The height of the
 /// transformation is given by height - if this value is less than 90 then it is assumed to be the
 /// elevation angle from the radar. If center is not equal to zero, then the calculation is assumed
 /// to be for the center of the cell, not the edge. The calculated values are returned in geocentric
 /// coordinates.
+/// Called RPosGeo in cnvtcoord.c of RST
 fn rpos_geo(
     center: bool,
     beam_num: i32,
@@ -129,7 +318,13 @@ fn rpos_geo(
     let psi = hdw.beam_separation * (beam_num - offset) + beam_edge + hdw.boresight_shift;
 
     // Calculate the slant range to the range gate in km
-    let distance = slant_range(first_range, range_sep, rx_rise, range_edge, range_gate + 1);
+    let distance = slant_range(
+        first_range as i32,
+        range_sep as i32,
+        rx_rise as i32,
+        range_edge as i32,
+        range_gate,
+    );
 
     // If the input altitude is below 90, then it is actually an input elevation angle in degrees.
     // If so, we calculate the field point height
@@ -145,7 +340,19 @@ fn rpos_geo(
     }
 
     // Calculate the geocentric coordinates of the field point
-    field_point_calculation(hdw, psi, field_point_height, distance, chisham)
+    fieldpoint_height(
+        Coor4D::raw(
+            hdw.latitude as f64,
+            hdw.longitude as f64,
+            hdw.altitude as f64,
+            0.0,
+        ),
+        psi,
+        field_point_height,
+        altitude,
+        distance as f64,
+        chisham,
+    )
 }
 
 pub fn rpos_range_beam_azimuth_elevation(
@@ -334,7 +541,7 @@ pub fn rpos_inv_mag(
     // TODO: Accept old_aacgm option
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
     // magnetic coordinates
-    let (pointing_mag_lat, pointing_mag_lon) =
+    let (pointing_mag_lat, mut pointing_mag_lon) =
         aacgm_v2_convert(pointing_lat, pointing_lon, virtual_height, 0)?;
 
     // Make sure pointing_mag_lon lies between +/- 180 degrees
