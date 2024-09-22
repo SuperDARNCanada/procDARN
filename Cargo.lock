@@ -119,7 +119,6 @@ dependencies = [
  "itertools",
  "rayon",
  "rust-embed",
- "thiserror",
  "time",
 ]
 
