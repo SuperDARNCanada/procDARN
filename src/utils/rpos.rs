@@ -79,7 +79,7 @@ fn local_to_cartesian(loc: &Coor4D, v: &Coor4D) -> Coor4D {
 }
 
 /// Calculates the slant range to a range gate in km.
-/// Called slant_range in cnvtcoord.c of RST.
+/// Called slant_range in cnvtcoord.c of RST
 pub fn slant_range(
     first_range: i32,
     range_sep: i32,
@@ -92,6 +92,25 @@ pub fn slant_range(
     let sample_separation = range_sep * 20 / 3; // microseconds
 
     (lag_to_first_range - rx_rise + (range_gate * sample_separation) + range_edge) as f32 * 0.15
+}
+
+/// Adjusts a point in geodetic coordinates to account for the oblateness of the Earth.
+/// Called geocnvrt in cnvtcoord.c of RST
+fn geocnvrt(point: &Coor4D, ellipsoid: Ellipsoid, xal: f64, xel: f64) -> Coor2D {
+    let kxg = xel.cos() * xal.sin();
+    let kyg = xel.cos() * xal.cos();
+    let kzg = xel.sin();
+
+    let radar_position = ellipsoid.cartesian(point);
+
+    let kxr = kxg;
+    let kyr = kyg * del.cos() + kzg * del.sin();
+    let kzr = -kyg * del.sin() + kzg * del.cos();
+
+    let ral = kyr.atan2(kxr);
+    let rel = (kzr / (kxr * kxr + kyr * kyr).sqrt()).atan();
+
+    Coor2D::raw(ral, rel)
 }
 
 /// Calculate a destination point (lat, lon) from a start point, distance, and bearing in degrees
@@ -268,7 +287,7 @@ fn fieldpoint_height(
         let xal = azimuth + boresight_bearing_rad;
 
         // Adjust azimuth and elevation for oblateness of the Earth
-        geocnvrt(point, xal, xel, ral, dummy);
+        let (ral, _) = geocnvrt(point, xal, xel);
 
         // Obtain the global spherical coordinates of the field point
         fldpnt(radar_rho, point, ral, rel, range, &fieldpoint);
