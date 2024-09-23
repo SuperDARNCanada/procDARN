@@ -4,7 +4,7 @@ use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::filtering;
 use crate::fitting::fitacf3::fitting;
 use crate::utils::hdw::HdwInfo;
-use dmap::formats::{FitacfRecord, RawacfRecord};
+use dmap::{FitacfRecord, RawacfRecord};
 use std::error::Error;
 use std::f64::consts::PI;
 use std::fmt;
@@ -39,15 +39,15 @@ impl Display for Fitacf3Error {
 pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let lags = create_lag_list(record);
 
-    let noise_power = if record.num_averages <= 0 {
+    let noise_power = if record.get("nave")? <= 0 {
         1.0
     } else {
         acf_cutoff_power(record)
     };
     let mut range_list = vec![];
-    for i in 0..record.range_list.data.len() {
-        let range_num = record.range_list.data[i];
-        if record.lag_zero_power.data[range_num as usize] != 0.0 {
+    for i in 0..record.get("slist")?.data.len() {
+        let range_num = record.get("slist")?.data[i];
+        if record.get("pwr0")?.data[range_num as usize] != 0.0 {
             range_list.push(RangeNode::new(i, range_num as usize, record, &lags)?)
         }
     }
@@ -68,17 +68,17 @@ pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfR
 
 /// Creates the lag table based on the data.
 fn create_lag_list(record: &RawacfRecord) -> Vec<LagNode> {
-    let lag_table = &record.lag_table;
-    let pulse_table = &record.pulse_table;
-    let multi_pulse_increment = record.multi_pulse_increment;
-    let sample_separation = record.sample_separation;
+    let lag_table = &record.get("ltab")?;
+    let pulse_table = &record.get("ptab")?;
+    let multi_pulse_increment = record.get("mpinc")?;
+    let sample_separation = record.get("smsep")?;
 
     let mut lags = vec![];
-    for i in 0..record.num_lags as usize {
+    for i in 0..record.get("mplgs")? as usize {
         let mut pulse_1_idx = 0;
         let mut pulse_2_idx = 0;
         let number = lag_table.data[2 * i + 1] - lag_table.data[2 * i]; // flattened, we want row i, cols 1 and 0
-        for j in 0..record.num_pulses as usize {
+        for j in 0..record.get("mppul")? as usize {
             if lag_table.data[2 * i] == pulse_table.data[j] {
                 pulse_1_idx = j;
             }
@@ -103,12 +103,12 @@ fn create_lag_list(record: &RawacfRecord) -> Vec<LagNode> {
 
 /// Calculates the minimum power value for ACFs in the record (passing)
 fn acf_cutoff_power(rec: &RawacfRecord) -> f32 {
-    let mut sorted_power_levels = rec.lag_zero_power.data.clone();
+    let mut sorted_power_levels = rec.get("pwr0")?.data.clone();
     sorted_power_levels.sort_by(|a, b| a.total_cmp(b)); // sort floats
     let mut i: usize = 0;
     let mut j: f64 = 0.0;
     let mut min_power: f64 = 0.0;
-    while j < 10.0 && i < rec.num_ranges as usize / 3 {
+    while j < 10.0 && i < rec.get("nrang")? as usize / 3 {
         if sorted_power_levels[i] > 0.0 {
             j += 1.0;
         }
@@ -119,21 +119,22 @@ fn acf_cutoff_power(rec: &RawacfRecord) -> f32 {
         j = 1.0;
     }
     min_power *= cutoff_power_correction(rec) / j;
-    if min_power < ACF_SNR_CUTOFF && rec.search_noise > 0.0 {
-        min_power = rec.search_noise as f64;
+    let search_noise = rec.get("noise.search")?;
+    if min_power < ACF_SNR_CUTOFF && search_noise > 0.0 {
+        min_power = search_noise as f64;
     }
     min_power as f32
 }
 
 /// Passing
 fn cutoff_power_correction(rec: &RawacfRecord) -> f64 {
-    let std_dev = 1.0 / (rec.num_averages as f64).sqrt();
+    let std_dev = 1.0 / (rec.get("nave")? as f64).sqrt();
 
     let mut i = 0.0;
     let mut cumulative_pdf = 0.0;
     let mut cumulative_pdf_x_norm_power = 0.0;
     let mut normalized_power;
-    while cumulative_pdf < (10.0 / rec.num_ranges as f64) {
+    while cumulative_pdf < (10.0 / rec.get("nave")? as f64) {
         // Normalized power for calculating model PDF (Gaussian)
         normalized_power = i / 1000.0;
         let x = -(normalized_power - 1.0) * (normalized_power - 1.0) / (2.0 * std_dev * std_dev);

@@ -1,5 +1,6 @@
-use dmap::formats::{to_file, DmapRecord, RawacfRecord};
+use dmap::{Record, RawacfRecord, write_rawacf};
 use std::fs::File;
+use std::path::PathBuf;
 
 fn main() {
     let file =
@@ -10,5 +11,5 @@ fn main() {
     //     .expect("Test file not found");
     let contents = RawacfRecord::read_records(file).unwrap();
 
-    to_file("tests/test_files/temp.rawacf", &contents).unwrap();
+    write_rawacf(contents, &PathBuf::from("tests/test_files/temp.rawacf")).unwrap();
 }

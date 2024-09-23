@@ -1,10 +1,10 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::RangeNode;
 use crate::utils::hdw::HdwInfo;
-use dmap::formats::{FitacfRecord, RawacfRecord};
-use dmap::{DmapVec, InDmap};
+use dmap::{FitacfRecord, RawacfRecord, DmapField, DmapScalar, DmapVec};
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
+use indexmap::IndexMap;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
@@ -19,7 +19,7 @@ pub fn determinations(
 ) -> Result<FitacfRecord, Fitacf3Error> {
     let range_list: Vec<i16> = ranges.iter().map(|r| r.range_num as i16).collect();
     let lag_0_power_db: Vec<f32> = rec
-        .lag_zero_power
+        .get("pwr0")?
         .data
         .iter()
         .map(|p| {
@@ -30,53 +30,18 @@ pub fn determinations(
             }
         })
         .collect();
+    let mut fit_rec: IndexMap<String, DmapField> = IndexMap::new();
+    for key in vec!["radar.revision.major", "radar.revision.minor", "origin.code",
+                    "origin.time", "origin.command", "cp", "stid", "time.yr", "time.mo", "time.dy", "time.hr", "time.mt", "time.sc", "time.us",
+    "txpow", "nave", "atten", "lagfr", "smsep", "ercod", "stat.agc", "stat.lopwr", "noise.search", "noise.mean", "channel", "bmnum",
+    "bmazm", "scan", "offset", "rxrise", "intt.sc", "intt.us", "txpl", "mpinc", "mppul", "mplgs", "nrang", "frang", "rsep", "xcf", "tfreq",
+    "mxpwr", "lvmax"].iter() {
+        fit_rec.insert(key, rec.get(key)?);
+    }
     if range_list.is_empty() {
-        Ok(FitacfRecord {
-            radar_revision_major: rec.radar_revision_major,
-            radar_revision_minor: rec.radar_revision_minor,
-            origin_code: rec.origin_code,
-            origin_time: "".to_string(),    // TODO: Get current time
-            origin_command: "".to_string(), // TODO: Get this
-            control_program: rec.control_program,
-            station_id: rec.station_id,
-            year: rec.year,
-            month: rec.month,
-            day: rec.day,
-            hour: rec.hour,
-            minute: rec.minute,
-            second: rec.second,
-            microsecond: rec.microsecond,
-            tx_power: rec.tx_power,
-            num_averages: rec.num_averages,
-            attenuation: rec.attenuation,
-            lag_to_first_range: rec.lag_to_first_range,
-            sample_separation: rec.sample_separation,
-            error_code: rec.error_code,
-            agc_status: rec.agc_status,
-            low_power_status: rec.low_power_status,
-            search_noise: rec.search_noise,
-            mean_noise: rec.mean_noise,
-            channel: rec.channel,
-            beam_num: rec.beam_num,
-            beam_azimuth: rec.beam_azimuth,
-            scan_flag: rec.scan_flag,
-            offset: rec.offset,
-            rx_rise_time: rec.rx_rise_time,
-            intt_second: rec.intt_second,
-            intt_microsecond: rec.intt_microsecond,
-            tx_pulse_length: rec.tx_pulse_length,
-            multi_pulse_increment: rec.multi_pulse_increment,
-            num_pulses: rec.num_pulses,
-            num_lags: rec.num_lags,
+        Ok(FitacfRecord::new(
             num_lags_extras: rec.num_lags_extras,
             if_mode: rec.if_mode,
-            num_ranges: rec.num_ranges,
-            first_range: rec.first_range,
-            range_sep: rec.range_sep,
-            xcf_flag: rec.xcf_flag,
-            tx_freq: rec.tx_freq,
-            max_power: rec.max_power,
-            max_noise_level: rec.max_noise_level,
             comment: rec.comment.clone(),
             algorithm: None,
             fitacf_revision_major: FITACF_REVISION_MAJOR,
@@ -327,52 +292,9 @@ pub fn determinations(
             dimensions: vec![quality_flag.len() as i32],
         };
 
-        Ok(FitacfRecord {
-            radar_revision_major: rec.radar_revision_major,
-            radar_revision_minor: rec.radar_revision_minor,
-            origin_code: rec.origin_code,
-            origin_time: "".to_string(),    // TODO: Get current time
-            origin_command: "".to_string(), // TODO: Get this
-            control_program: rec.control_program,
-            station_id: rec.station_id,
-            year: rec.year,
-            month: rec.month,
-            day: rec.day,
-            hour: rec.hour,
-            minute: rec.minute,
-            second: rec.second,
-            microsecond: rec.microsecond,
-            tx_power: rec.tx_power,
-            num_averages: rec.num_averages,
-            attenuation: rec.attenuation,
-            lag_to_first_range: rec.lag_to_first_range,
-            sample_separation: rec.sample_separation,
-            error_code: rec.error_code,
-            agc_status: rec.agc_status,
-            low_power_status: rec.low_power_status,
-            search_noise: rec.search_noise,
-            mean_noise: rec.mean_noise,
-            channel: rec.channel,
-            beam_num: rec.beam_num,
-            beam_azimuth: rec.beam_azimuth,
-            scan_flag: rec.scan_flag,
-            offset: rec.offset,
-            rx_rise_time: rec.rx_rise_time,
-            intt_second: rec.intt_second,
-            intt_microsecond: rec.intt_microsecond,
-            tx_pulse_length: rec.tx_pulse_length,
-            multi_pulse_increment: rec.multi_pulse_increment,
-            num_pulses: rec.num_pulses,
-            num_lags: rec.num_lags,
+        Ok(FitacfRecord::new(fit_rec)
             num_lags_extras: rec.num_lags_extras,
             if_mode: rec.if_mode,
-            num_ranges: rec.num_ranges,
-            first_range: rec.first_range,
-            range_sep: rec.range_sep,
-            xcf_flag: rec.xcf_flag,
-            tx_freq: rec.tx_freq,
-            max_power: rec.max_power,
-            max_noise_level: rec.max_noise_level,
             comment: rec.comment.clone(),
             algorithm: None,
             fitacf_revision_major: FITACF_REVISION_MAJOR,
@@ -425,6 +347,7 @@ pub fn determinations(
             phi_xcf_std_dev: Some(convert_to_dmapvec(xcf_phi_std_dev)),
         })
     }
+    Ok(FitacfRecord::new(fit_rec))
 }
 
 fn convert_to_dmapvec<T: InDmap>(vals: Vec<T>) -> DmapVec<T> {

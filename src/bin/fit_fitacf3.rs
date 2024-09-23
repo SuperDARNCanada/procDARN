@@ -2,7 +2,7 @@ use backscatter_rs::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Erro
 use backscatter_rs::utils::hdw::HdwInfo;
 use chrono::NaiveDateTime;
 use clap::Parser;
-use dmap::formats::{to_file, DmapRecord, FitacfRecord, RawacfRecord};
+use dmap::{Record, RawacfRecord, FitacfRecord, write_fitacf};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
@@ -41,13 +41,13 @@ fn bin_main() -> BinResult<()> {
     let file_datetime = NaiveDateTime::parse_from_str(
         format!(
             "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
-            rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
+            rec.get("yr"), rec.get("mo"), rec.get("dy"), rec.get("hr"), rec.get("mt"), rec.get("sc")
         )
         .as_str(),
         "%Y%m%d %H:%M:%S",
     )
     .map_err(|_| Fitacf3Error::Message("Unable to interpret record timestamp".to_string()))?;
-    let hdw = HdwInfo::new(rec.station_id, file_datetime)
+    let hdw = HdwInfo::new(rec.get("stid"), file_datetime)
         .map_err(|e| Fitacf3Error::Message(e.details))?;
 
     // Fit the records!
@@ -57,6 +57,6 @@ fn bin_main() -> BinResult<()> {
         .collect();
 
     // Write to file
-    to_file(args.outfile, &fitacf_records)?;
+    write_fitacf(&fitacf_records, args.outfile)?;
     Ok(())
 }
