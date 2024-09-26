@@ -2,17 +2,19 @@ use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::RangeNode;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
+use chrono::Utc;
 use dmap::formats::{dmap::Record, fitacf::FitacfRecord};
 use dmap::types::DmapField;
 use indexmap::IndexMap;
-use numpy::ndarray::{Array, Array1, ArrayD};
-use numpy::IxDyn;
+use numpy::ndarray::{Array, Array1};
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
-use chrono::Utc;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
+const LIGHTSPEED: f32 = 299792458.0;
+const KHZ_TO_HZ: f32 = 1000.0;
+const US_TO_S: f32 = 1e-6;
 pub const ORIGIN_CODE: i8 = 1;
 pub const V_MAX: f32 = 30.0;
 pub const W_MAX: f32 = 90.0;
@@ -48,11 +50,14 @@ pub(crate) fn determinations(
     );
     fit_rec.insert("origin.code".to_string(), ORIGIN_CODE.into());
     let now: chrono::DateTime<Utc> = std::time::SystemTime::now().into();
-    fit_rec.insert("origin.time".to_string(), format!("{}", now.format("%a %b %e %T %Y")).into());
+    fit_rec.insert(
+        "origin.time".to_string(),
+        format!("{}", now.format("%a %b %e %T %Y")).into(),
+    );
     fit_rec.insert(
         "origin.command".to_string(),
         rec.origin_command.clone().into(),
-    );
+    ); // todo: Get the invocation
     fit_rec.insert("cp".to_string(), rec.cp.into());
     fit_rec.insert("stid".to_string(), rec.stid.into());
     fit_rec.insert("time.yr".to_string(), rec.time_yr.into());
@@ -94,6 +99,8 @@ pub(crate) fn determinations(
     fit_rec.insert("combf".to_string(), rec.combf.clone().into());
     fit_rec.insert("ptab".to_string(), rec.ptab.clone().into_dyn().into());
     fit_rec.insert("ltab".to_string(), rec.ltab.clone().into_dyn().into());
+    fit_rec.insert("algorithm".to_string(), "fitacf3".to_string().into());
+    fit_rec.insert("tdiff".to_string(), hdw.tdiff_a.into());
     fit_rec.insert(
         "fitacf.revision.major".to_string(),
         FITACF_REVISION_MAJOR.into(),
@@ -106,9 +113,13 @@ pub(crate) fn determinations(
     fit_rec.insert("noise.vel".to_string(), 0.0_f32.into());
     if let Some(x) = rec.ifmode {
         fit_rec.insert("ifmode".to_string(), x.into());
+    } else {
+        fit_rec.insert("ifmode".to_string(), <DmapField as From<i16>>::from(-1));
     }
     if let Some(x) = rec.mplgexs {
         fit_rec.insert("mplgexs".to_string(), x.into());
+    } else {
+        fit_rec.insert("mplgexs".to_string(), 0_i16.into());
     }
     fit_rec.insert("noise.sky".to_string(), noise_power.into());
     fit_rec.insert("pwr0".to_string(), lag_0_power_db.into_dyn().into());
@@ -141,7 +152,7 @@ pub(crate) fn determinations(
                     .expect("Unable to make fitacf without linear fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0_f32).ln()
+                    / 10.0_f32.ln()
             })
             .collect();
         let power_quadratic: Vec<f32> = ranges
@@ -152,7 +163,7 @@ pub(crate) fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without quadratic fitted power")
                     .intercept as f32)
-                    / (10.0_f32).ln()
+                    / 10.0_f32.ln()
                     - noise_db
             })
             .collect();
@@ -165,11 +176,11 @@ pub(crate) fn determinations(
                     .expect("Unable to make fitacf without quadratic fitted power error")
                     .variance_intercept as f32)
                     .sqrt()
-                    / (10.0_f32).ln()
+                    / 10.0_f32.ln()
             })
             .collect();
         let velocity_conversion: f32 =
-            299792458.0 * hdw.velocity_sign / (4.0 * PI_f32 * rec.tfreq as f32 * 1000.0);
+            LIGHTSPEED * hdw.velocity_sign / (4.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
         let velocity: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -191,7 +202,8 @@ pub(crate) fn determinations(
                     * velocity_conversion
             })
             .collect();
-        let width_conversion: f32 = 299792458.0 * 2.0 / (4.0 * PI_f32 * rec.tfreq as f32 * 1000.0);
+        let width_conversion: f32 =
+            LIGHTSPEED * 2.0 / (4.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
         let spectral_width_linear: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -215,7 +227,7 @@ pub(crate) fn determinations(
             })
             .collect();
         let quadratic_width_conversion: f32 =
-            299792458.0 * 2.0_f32.ln().sqrt() / (PI_f32 * rec.tfreq as f32 * 1000.0);
+            LIGHTSPEED * 2.0_f32.ln().sqrt() / (PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
         let spectral_width_quadratic: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -265,16 +277,12 @@ pub(crate) fn determinations(
             })
             .collect();
         let groundscatter_flag: Vec<i8> = zip(velocity.iter(), spectral_width_linear.iter())
-            .map(|(v, w)| (v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 1.0) as i8)
+            .map(|(v, w)| (v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 0.0) as i8)
             .collect();
         let xcfs = &rec.xcfd.as_ref().expect("Unable to make fitacf xcf_phi0");
         let xcf_phi0: Vec<f32> = ranges
             .iter()
-            .map(|r| {
-                xcfs[[r.range_idx, 0, 1]]
-                    .atan2(xcfs[[r.range_idx, 0, 0]])
-                    * hdw.phase_sign
-            })
+            .map(|r| xcfs[[r.range_idx, 0, 1]].atan2(xcfs[[r.range_idx, 0, 0]]) * hdw.phase_sign)
             .collect();
         let xcf_phi0_err: Vec<f32> = ranges
             .iter()
@@ -295,11 +303,8 @@ pub(crate) fn determinations(
                     .chi_squared as f32
             })
             .collect();
-        let (elevation_low, elevation_normal, elevation_high) =
+        let (elevation_phi0, elevation_intercept_error, elevation_intercept) =
             calculate_elevation(&ranges, rec, &xcf_phi0, hdw);
-
-        let float_zeros: ArrayD<f32> = Array::zeros(IxDyn(&[quality_flag.len()]));
-        let i8_zeros: ArrayD<i8> = Array::zeros(IxDyn(&[quality_flag.len()]));
 
         fit_rec.insert(
             "slist".to_string(),
@@ -370,18 +375,6 @@ pub(crate) fn determinations(
             "sd_phi".to_string(),
             Array::from_vec(std_dev_phi).into_dyn().into(),
         );
-        fit_rec.insert("x_qflg".to_string(), i8_zeros.clone().into());
-        fit_rec.insert("x_gflg".to_string(), i8_zeros.into());
-        fit_rec.insert("x_p_l".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_p_l_e".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_p_s".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_p_s_e".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_v".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_v_e".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_w_l".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_w_l_e".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_w_s".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_w_s_e".to_string(), float_zeros.clone().into());
         fit_rec.insert(
             "phi0".to_string(),
             Array::from_vec(xcf_phi0).into_dyn().into(),
@@ -392,18 +385,16 @@ pub(crate) fn determinations(
         );
         fit_rec.insert(
             "elv".to_string(),
-            Array::from_vec(elevation_normal).into_dyn().into(),
+            Array::from_vec(elevation_phi0).into_dyn().into(),
         );
         fit_rec.insert(
-            "elv_low".to_string(),
-            Array::from_vec(elevation_low).into_dyn().into(),
+            "elv_error".to_string(),
+            Array::from_vec(elevation_intercept_error).into_dyn().into(),
         );
         fit_rec.insert(
-            "elv_high".to_string(),
-            Array::from_vec(elevation_high).into_dyn().into(),
+            "elv_fitted".to_string(),
+            Array::from_vec(elevation_intercept).into_dyn().into(),
         );
-        fit_rec.insert("x_sd_l".to_string(), float_zeros.clone().into());
-        fit_rec.insert("x_sd_s".to_string(), float_zeros.into());
         fit_rec.insert(
             "x_sd_phi".to_string(),
             Array::from_vec(xcf_phi_std_dev).into_dyn().into(),
@@ -417,6 +408,10 @@ pub(crate) fn determinations(
     Ok(new_rec)
 }
 
+/// Computes the elevation angles and errors for the record.
+///
+/// Computes elevation angles using both the XCF fit intercept (with error)
+/// and phi0 from the XCF.
 fn calculate_elevation(
     ranges: &[RangeNode],
     rec: &Rawacf,
@@ -437,9 +432,11 @@ fn calculate_elevation(
         elevation_corr *= -1.0;
     }
     let azimuth_offset = hdw.max_num_beams as f32 / 2.0 - 0.5;
-    let phi_0 = (hdw.beam_separation * (rec.bmnum as f32 - azimuth_offset) * PI_f32 / 180.0).cos();
-    let wave_num = 2.0 * PI_f32 * rec.tfreq as f32 * 1000.0 / 299792458.0;
-    let cable_offset = -2.0 * PI_f32 * rec.tfreq as f32 * 1000.0 * hdw.tdiff_a * 1.0e-6;
+    let phi_0 = (hdw.beam_separation * (rec.bmnum as f32 - azimuth_offset))
+        .to_radians()
+        .cos(); // todo: Add in beam offset
+    let wave_num = 2.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ / LIGHTSPEED;
+    let cable_offset = -2.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S;
     let phase_diff_max = phi_sign * wave_num * array_separation * phi_0 + cable_offset;
     let mut psi: Vec<f32> = ranges
         .iter()
@@ -449,12 +446,11 @@ fn calculate_elevation(
                 .as_ref()
                 .expect("Unable to find elevation without fitted elevation")
                 .intercept as f32;
-            let mut y =
-                x + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor() - cable_offset;
+            let mut y = x + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor();
             if phi_sign < 0.0 {
                 y += 2.0 * PI_f32;
             }
-            y
+            y - cable_offset
         })
         .collect();
     let mut psi_kd: Vec<f32> = psi
@@ -462,19 +458,15 @@ fn calculate_elevation(
         .map(|p| p / (wave_num * array_separation))
         .collect();
     let mut theta: Vec<f32> = psi_kd.iter().map(|p| phi_0 * phi_0 - p * p).collect();
-    let elevation: Vec<f32> = theta
+    let elevation_intercept: Vec<f32> = theta
         .iter()
         .map(|&t| {
             if t < 0.0 || t.abs() > 1.0 {
-                -elevation_corr
+                -elevation_corr.to_degrees()
             } else {
-                t.sqrt().asin()
+                t.sqrt().asin().to_degrees()
             }
         })
-        .collect();
-    let elevation_high: Vec<f32> = elevation
-        .iter()
-        .map(|e| (e + elevation_corr) * 180.0 / PI_f32)
         .collect();
     let psi_k2d2: Vec<f32> = psi
         .iter()
@@ -492,17 +484,16 @@ fn calculate_elevation(
                 .variance_intercept as f32
         })
         .collect();
-    let elevations_low: Vec<f32> = zip(errors.iter(), df_by_dy.iter())
-        .map(|(e, d)| e.sqrt() * d.abs() * 180.0 / PI_f32)
+    let elevation_intercept_error: Vec<f32> = zip(errors.iter(), df_by_dy.iter())
+        .map(|(e, d)| (e.sqrt() * d.abs()).to_degrees())
         .collect();
 
     // This time, use the xcf lag0 phase
     psi = xcf_phi0
         .iter()
         .map(|&x| {
-            let mut y = x
-                + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor()
-                - cable_offset;
+            let mut y =
+                x + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor() - cable_offset;
             if phi_sign < 0.0 {
                 y += 2.0 * PI_f32;
             }
@@ -514,15 +505,19 @@ fn calculate_elevation(
         .map(|p| p / (wave_num * array_separation))
         .collect();
     theta = psi_kd.iter().map(|p| phi_0 * phi_0 - p * p).collect();
-    let elevation_normal: Vec<f32> = theta
+    let elevation_phi0: Vec<f32> = theta
         .iter()
         .map(|&t| {
             if t < 0.0 || t.abs() > 1.0 {
-                -180.0 / PI_f32 * elevation_corr
+                -elevation_corr.to_degrees()
             } else {
-                (t + elevation_corr).sqrt().asin() * 180.0 / PI_f32
+                (t + elevation_corr).sqrt().asin().to_degrees()
             }
         })
         .collect();
-    (elevations_low, elevation_normal, elevation_high)
+    (
+        elevation_phi0,
+        elevation_intercept_error,
+        elevation_intercept,
+    )
 }

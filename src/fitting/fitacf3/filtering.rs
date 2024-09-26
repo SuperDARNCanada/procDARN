@@ -6,7 +6,11 @@ use crate::utils::rawacf::Rawacf;
 use is_close::is_close;
 
 pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
-    let mut pulses_in_us: Vec<i32> = rec.ptab.iter().map(|&p| p as i32 * rec.mpinc as i32).collect();
+    let mut pulses_in_us: Vec<i32> = rec
+        .ptab
+        .iter()
+        .map(|&p| p as i32 * rec.mpinc as i32)
+        .collect();
 
     if rec.offset != 0 {
         if rec.channel == 1 {
@@ -51,7 +55,11 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
     bad_samples
 }
 
-pub(crate) fn filter_tx_overlapped_lags(rec: &Rawacf, lags: Vec<LagNode>, ranges: &mut Vec<RangeNode>) {
+pub(crate) fn filter_tx_overlapped_lags(
+    rec: &Rawacf,
+    lags: Vec<LagNode>,
+    ranges: &mut Vec<RangeNode>,
+) {
     let bad_samples = mark_bad_samples(rec);
     for range_node in ranges {
         let mut bad_indices = vec![];

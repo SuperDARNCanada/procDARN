@@ -38,7 +38,9 @@ impl Display for Fitacf3Error {
 
 pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let raw: Rawacf = Rawacf::try_from(record).map_err(|e| {
-        Fitacf3Error::Message(format!("Could not extract all required fields from rawacf record: {e}"))
+        Fitacf3Error::Message(format!(
+            "Could not extract all required fields from rawacf record: {e}"
+        ))
     })?;
     let lags = create_lag_list(&raw);
 

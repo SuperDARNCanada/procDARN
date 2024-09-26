@@ -1,15 +1,13 @@
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
-use numpy::{Ix1, Ix2, Ix3};
 use numpy::ndarray::{Array1, Array2, Array3, ArrayD};
+use numpy::{Ix1, Ix2, Ix3};
 
 pub(crate) struct Rawacf {
     // Scalar fields
     pub radar_revision_major: i8,
     pub radar_revision_minor: i8,
-    pub origin_code: i8,
-    pub origin_time: String,
     pub origin_command: String,
     pub cp: i16,
     pub stid: i16,
@@ -86,8 +84,6 @@ impl TryFrom<&RawacfRecord> for Rawacf {
         Ok(Rawacf {
             radar_revision_major: scalar_getter("radar.revision.major")?.clone().try_into()?,
             radar_revision_minor: scalar_getter("radar.revision.minor")?.clone().try_into()?,
-            origin_code: scalar_getter("origin.code")?.clone().try_into()?,
-            origin_time: scalar_getter("origin.time")?.clone().try_into()?,
             origin_command: scalar_getter("origin.command")?.clone().try_into()?,
             cp: scalar_getter("cp")?.clone().try_into()?,
             stid: scalar_getter("stid")?.clone().try_into()?,
@@ -139,13 +135,41 @@ impl TryFrom<&RawacfRecord> for Rawacf {
                 Some(x) => Some(x.clone().try_into()?),
                 None => None,
             },
-            ptab: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("ptab")?.clone())?.into_dimensionality::<Ix1>().map_err(|e| DmapError::InvalidVector(format!("Unable to map ptab to 1D vector: {e}")))?,
-            ltab: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("ltab")?.clone())?.into_dimensionality::<Ix2>().map_err(|e| DmapError::InvalidVector(format!("Unable to map ltab to 2D vector: {e}")))?,
-            pwr0: <DmapField as TryInto<ArrayD<f32>>>::try_into(vector_getter("pwr0")?.clone())?.into_dimensionality::<Ix1>().map_err(|e| DmapError::InvalidVector(format!("Unable to map pwr0 to 1D vector: {e}")))?,
-            slist: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("slist")?.clone())?.into_dimensionality::<Ix1>().map_err(|e| DmapError::InvalidVector(format!("Unable to map slist to 1D vector: {e}")))?,
-            acfd: <DmapField as TryInto<ArrayD<f32>>>::try_into(vector_getter("acfd")?.clone())?.into_dimensionality::<Ix3>().map_err(|e| DmapError::InvalidVector(format!("Unable to map acfd to 3D vector: {e}")))?,
+            ptab: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("ptab")?.clone())?
+                .into_dimensionality::<Ix1>()
+                .map_err(|e| {
+                    DmapError::InvalidVector(format!("Unable to map ptab to 1D vector: {e}"))
+                })?,
+            ltab: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("ltab")?.clone())?
+                .into_dimensionality::<Ix2>()
+                .map_err(|e| {
+                    DmapError::InvalidVector(format!("Unable to map ltab to 2D vector: {e}"))
+                })?,
+            pwr0: <DmapField as TryInto<ArrayD<f32>>>::try_into(vector_getter("pwr0")?.clone())?
+                .into_dimensionality::<Ix1>()
+                .map_err(|e| {
+                    DmapError::InvalidVector(format!("Unable to map pwr0 to 1D vector: {e}"))
+                })?,
+            slist: <DmapField as TryInto<ArrayD<i16>>>::try_into(vector_getter("slist")?.clone())?
+                .into_dimensionality::<Ix1>()
+                .map_err(|e| {
+                    DmapError::InvalidVector(format!("Unable to map slist to 1D vector: {e}"))
+                })?,
+            acfd: <DmapField as TryInto<ArrayD<f32>>>::try_into(vector_getter("acfd")?.clone())?
+                .into_dimensionality::<Ix3>()
+                .map_err(|e| {
+                    DmapError::InvalidVector(format!("Unable to map acfd to 3D vector: {e}"))
+                })?,
             xcfd: match opt_vector_getter("xcfd") {
-                Some(x) => Some(<DmapField as TryInto<ArrayD<f32>>>::try_into(x.clone())?.into_dimensionality::<Ix3>().map_err(|e| DmapError::InvalidVector(format!("Unable to map xcfd to 3D vector: {e}")))?),
+                Some(x) => Some(
+                    <DmapField as TryInto<ArrayD<f32>>>::try_into(x.clone())?
+                        .into_dimensionality::<Ix3>()
+                        .map_err(|e| {
+                            DmapError::InvalidVector(format!(
+                                "Unable to map xcfd to 3D vector: {e}"
+                            ))
+                        })?,
+                ),
                 None => None,
             },
         })

@@ -80,7 +80,10 @@ pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &Rawacf) -> Result<()> {
+pub(crate) fn calculate_phase_and_elev_sigmas(
+    ranges: &mut Vec<RangeNode>,
+    rec: &Rawacf,
+) -> Result<()> {
     for range in ranges {
         let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
         // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
@@ -171,7 +174,7 @@ pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
             }
             let orig_slope_estimate = sum_xy / sum_xx;
             let mut orig_slope_error = 0.0;
-            for (p, (s, t)) in zip(new_phases.iter(), zip(sigmas.iter(), t.iter())) {
+            for (p, (s, t)) in zip(phases.iter(), zip(sigmas.iter(), t.iter())) {
                 if *s > 0.0 {
                     let temp = orig_slope_estimate * t - p;
                     orig_slope_error += temp * temp / (s * s);
@@ -213,17 +216,22 @@ pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-/// passing
 fn phase_correction(slope_estimate: f64, phases: &[f64], times: &[f64]) -> (Vec<f64>, i32) {
     let phase_predicted: Vec<f64> = times.iter().map(|t| t * slope_estimate).collect();
 
-    // Round to 4 decimals places, so that 0.4999 rounds to 0.5, then up to 1.0
+    // Round to 5 decimals places, so that 0.49999 rounds to 0.5, then up to 1.0
     let phase_diff: Vec<i32> = zip(phases.iter(), phase_predicted.iter())
-        .map(|(p, pred)| ((((pred - p) / (2.0 * PI)) * 10000.0).round() / 10000.0).round() as i32)
+        .map(|(p, pred)| {
+            ((((pred - p) / (2.0 * PI)) * 100_000.0).round() / 100_000.0).round() as i32
+        })
         .collect();
     let corrected_phase: Vec<f64> = zip(phases.iter(), phase_diff.iter())
         .map(|(p, &corr)| p + corr as f64 * 2.0 * PI)
         .collect();
-    let total_corrections: i32 = phase_diff.iter().map(|x| x.abs()).sum();
+    let total_corrections: i32 = phase_diff
+        .iter()
+        .map(|x| x.abs())
+        .max()
+        .map_or_else(|| 0, |x| x);
     (corrected_phase, total_corrections)
 }

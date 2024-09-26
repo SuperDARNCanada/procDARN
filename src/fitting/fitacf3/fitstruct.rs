@@ -60,7 +60,7 @@ impl RangeNode {
             // TODO: Log warning?
             rec.mpinc / rec.txpl
         };
-    
+
         let mut interference_for_pulses: Vec<f64> = vec![];
         for pulse_to_check in 0..rec.mppul as usize {
             let mut total_interference: f64 = 0.0;
@@ -122,13 +122,16 @@ impl PhaseNode {
                 phase_type
             )))?,
         };
-        let phases = zip(acfd.slice(s![range_idx, .., 0]), acfd.slice(s![range_idx, .., 1]))
-            .map(|(&x, &y)| {
-                let real = x as f64;
-                let imag = y as f64;
-                imag.atan2(real)
-            })
-            .collect();
+        let phases = zip(
+            acfd.slice(s![range_idx, .., 0]),
+            acfd.slice(s![range_idx, .., 1]),
+        )
+        .map(|(&x, &y)| {
+            let real = x as f64;
+            let imag = y as f64;
+            imag.atan2(real)
+        })
+        .collect();
         let t = lags
             .iter()
             .map(|x| (x.lag_num * rec.mpinc as i32) as f64 * 1.0e-6)
@@ -159,13 +162,16 @@ impl PowerNode {
     ) -> PowerNode {
         let pwr_0 = rec.pwr0[range_num] as f64;
         // acfs stores as [num_ranges, num_lags, 2] in memory, with 2 corresponding to real, imag
-        let powers: Vec<f64> = zip(rec.acfd.slice(s![range_idx, .., 0]), rec.acfd.slice(s![range_idx, .., 1]))
-            .map(|(&x, &y)| {
-                let real = x as f64;
-                let imag = y as f64;
-                (real * real + imag * imag).sqrt()
-            })
-            .collect();
+        let powers: Vec<f64> = zip(
+            rec.acfd.slice(s![range_idx, .., 0]),
+            rec.acfd.slice(s![range_idx, .., 1]),
+        )
+        .map(|(&x, &y)| {
+            let real = x as f64;
+            let imag = y as f64;
+            (real * real + imag * imag).sqrt()
+        })
+        .collect();
         let normalized_power: Vec<f64> = powers.iter().map(|x| x * x / (pwr_0 * pwr_0)).collect();
 
         let sigmas: Vec<f64> = zip(normalized_power.iter(), alpha_2.iter())
