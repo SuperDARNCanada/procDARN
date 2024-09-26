@@ -1,13 +1,13 @@
 use crate::fitting::fitacf3::fitstruct::{FitType, FittedData, Sums};
 
 #[derive(Debug)]
-pub struct LeastSquares {
+pub(crate) struct LeastSquares {
     pub delta_chi_2: [[f64; 2]; 6],
     pub confidence: usize,
     pub degrees_of_freedom: usize,
 }
 impl LeastSquares {
-    pub fn new(confidence: usize, degrees_of_freedom: usize) -> LeastSquares {
+    pub(crate) fn new(confidence: usize, degrees_of_freedom: usize) -> LeastSquares {
         let delta_chi_2 = [
             [1.00, 2.30],
             [2.71, 4.61],
@@ -22,7 +22,7 @@ impl LeastSquares {
             degrees_of_freedom: degrees_of_freedom - 1,
         }
     }
-    pub fn two_parameter_line_fit(
+    pub(crate) fn two_parameter_line_fit(
         &self,
         x_vals: &[f64],
         y_vals: &[f64],
@@ -45,7 +45,7 @@ impl LeastSquares {
         fitted.chi_squared = Self::calculate_chi_2(&fitted, x_vals, y_vals, sigmas, &fit_type);
         fitted
     }
-    pub fn one_parameter_line_fit(
+    pub(crate) fn one_parameter_line_fit(
         &self,
         x_vals: &[f64],
         y_vals: &[f64],

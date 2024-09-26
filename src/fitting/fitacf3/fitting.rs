@@ -1,14 +1,14 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::{FitType, RangeNode};
 use crate::fitting::fitacf3::least_squares::LeastSquares;
-use dmap::formats::RawacfRecord;
+use crate::utils::rawacf::Rawacf;
 use std::f64::consts::PI;
 use std::iter::zip;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
 /// passing
-pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
 
     for range in ranges {
@@ -43,7 +43,7 @@ pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 }
 
 /// passing
-pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
         let phases = &range.phases.phases;
@@ -62,7 +62,7 @@ pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 }
 
 /// passing
-pub fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
         let phases = &range.elev.phases;
@@ -80,11 +80,7 @@ pub fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-/// passing
-pub fn calculate_phase_and_elev_sigmas(
-    ranges: &mut Vec<RangeNode>,
-    rec: &RawacfRecord,
-) -> Result<()> {
+pub(crate) fn calculate_phase_and_elev_sigmas(ranges: &mut Vec<RangeNode>, rec: &Rawacf) -> Result<()> {
     for range in ranges {
         let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
         // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
@@ -98,7 +94,7 @@ pub fn calculate_phase_and_elev_sigmas(
         let phase_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
             .map(|(x, y)| x * y - 1.0)
             .collect();
-        let denominator = 2.0 * rec.num_averages as f64;
+        let denominator = 2.0 * rec.nave as f64;
         let mut phase_sigmas: Vec<f64> = phase_numerator
             .iter()
             .map(|x| (x / denominator).sqrt())
@@ -117,8 +113,7 @@ pub fn calculate_phase_and_elev_sigmas(
     Ok(())
 }
 
-/// passing
-pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
+pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     for range in ranges {
         let (mut slope_numerator, mut slope_denominator) = (0.0, 0.0);
 
@@ -189,8 +184,7 @@ pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     }
 }
 
-/// passing
-pub fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
+pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     for range in ranges {
         let (mut sum_xy, mut sum_xx) = (0.0, 0.0);
 

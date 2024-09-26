@@ -1,4 +1,5 @@
-use dmap::{Record, RawacfRecord, write_rawacf};
+use dmap::write_rawacf;
+use dmap::formats::{rawacf::RawacfRecord, dmap::Record};
 use std::fs::File;
 use std::path::PathBuf;
 

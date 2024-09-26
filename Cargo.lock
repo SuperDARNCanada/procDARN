@@ -82,6 +82,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "approx"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -111,6 +120,9 @@ dependencies = [
  "indexmap 2.5.0",
  "is_close",
  "itertools 0.10.5",
+ "ndarray",
+ "numpy",
+ "pyo3",
  "rayon",
  "rust-embed",
 ]
@@ -411,7 +423,6 @@ dependencies = [
 [[package]]
 name = "dmap"
 version = "0.1.5"
-source = "git+https://github.com/SuperDARNCanada/dmap.git?branch=develop#14a17a9c25ebb384b942186393692c450d52b0d3"
 dependencies = [
  "bzip2",
  "indexmap 2.5.0",
@@ -728,6 +739,7 @@ version = "0.15.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb12d4e967ec485a5f71c6311fe28158e9d6f4bc4a447b474184d0f91a8fa32"
 dependencies = [
+ "approx",
  "matrixmultiply",
  "num-complex",
  "num-integer",
@@ -844,9 +856,9 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pkg-config"
-version = "0.3.30"
+version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
+checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
 
 [[package]]
 name = "plotters"

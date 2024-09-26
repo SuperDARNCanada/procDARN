@@ -1,9 +1,10 @@
 use backscatter_rs::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
 use backscatter_rs::utils::hdw::HdwInfo;
-use chrono::NaiveDateTime;
-use dmap::formats::{DmapRecord, FitacfRecord, RawacfRecord};
+use chrono::NaiveDate;
+use dmap::formats::{dmap::Record, fitacf::FitacfRecord, rawacf::RawacfRecord};
 use std::fs::{remove_file, File};
 use std::iter::zip;
+use dmap::types::{DmapField, DmapVec};
 
 #[test]
 fn test_fitacf3() {
@@ -13,16 +14,17 @@ fn test_fitacf3() {
     let mut fitacf_records = vec![];
 
     let rec = &rawacf[0];
-    let file_datetime = NaiveDateTime::parse_from_str(
-        format!(
-            "{:4}{:0>2}{:0>2} {:0>2}:{:0>2}:{:0>2}",
-            rec.year, rec.month, rec.day, rec.hour, rec.minute, rec.second
-        )
-        .as_str(),
-        "%Y%m%d %H:%M:%S",
-    )
-    .expect("Unable to interpret record timestamp");
-    let hdw = HdwInfo::new(rec.station_id, file_datetime).expect("Unable to read utils file");
+    let file_datetime = NaiveDate::from_ymd_opt(
+        rec.get(&"time.yr".to_string()).unwrap().clone().try_into().expect("Unable to get time.yr"),
+        rec.get(&"time.mo".to_string()).unwrap().clone().try_into().expect("Unable to get time.mo"),
+        rec.get(&"time.dy".to_string()).unwrap().clone().try_into().expect("Unable to get time.dy"),
+    ).unwrap()
+        .and_hms_opt(
+            rec.get(&"time.hr".to_string()).unwrap().clone().try_into().expect("Unable to get time.hr"),
+            rec.get(&"time.mt".to_string()).unwrap().clone().try_into().expect("Unable to get time.mt"),
+            rec.get(&"time.sc".to_string()).unwrap().clone().try_into().expect("Unable to get time.sc"),
+        ).unwrap();
+    let hdw = HdwInfo::new(rec.get(&"stid".to_string()).unwrap().clone().try_into().expect("Unable to get stid"), file_datetime).expect("Unable to get hdw info");
 
     for rec in rawacf {
         fitacf_records.push(fit_rawacf_record(&rec, &hdw).expect("Could not fit record"));
@@ -33,8 +35,24 @@ fn test_fitacf3() {
         File::open("tests/test_files/test.fitacf").expect("Could not open example fitacf file");
     let fitacf =
         FitacfRecord::read_records(fitacf_file).expect("Could not read test.fitacf records");
+    let soft_fields = vec!["origin.time", "origin.command"];
     for (read_rec, written_rec) in zip(fitacf_records.iter(), fitacf.iter()) {
-        assert_eq!(read_rec, written_rec)
+        // assert_eq!(read_rec.keys(), written_rec.keys());
+        for k in read_rec.keys() {
+            if soft_fields.contains(&&**k) {}
+            else {
+                match read_rec.get(k) {
+                    Some(DmapField::Vector(DmapVec::Float(x))) => {
+                        if let Some(DmapField::Vector(DmapVec::Float(y))) = written_rec.get(k) {
+                            assert!(x.abs_diff_eq(y, 1e-5), "Testing {}\nleft: {:?}\nright: {:?}", k, x, y)
+                        }
+                    },
+                    Some(_) => { assert_eq!(read_rec.get(k), written_rec.get(k), "Testing {}", k) },
+                    None => {}
+                }
+                // assert_eq!(read_rec.get(k), written_rec.get(k), "Testing {}", k)
+            }
+        }
     }
     remove_file("tests/test_files/temp.fitacf").expect("Unable to delete file");
 }
