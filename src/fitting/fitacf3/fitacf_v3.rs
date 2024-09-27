@@ -1,12 +1,17 @@
 //! Error type for Fitacfv3 algorithm
+use crate::error::ProcdarnError;
 use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::filtering;
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 use crate::fitting::fitacf3::fitting;
 use crate::utils::hdw::HdwInfo;
-use crate::utils::rawacf::Rawacf;
+use crate::utils::rawacf::{get_hdw, Rawacf};
 use dmap::formats::{fitacf::FitacfRecord, rawacf::RawacfRecord};
+use pyo3::exceptions::PyValueError;
+use pyo3::PyErr;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::f64::consts::PI;
+use dmap::error::DmapError;
 use thiserror::Error;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
@@ -26,6 +31,21 @@ pub enum Fitacf3Error {
     /// Represents a bad fit of the record, for any reason
     #[error("{0}")]
     BadFit(String),
+
+    /// Unable to get hardware file information
+    #[error("{0}")]
+    Hdw(#[from] ProcdarnError),
+
+    /// Invalid DMAP file
+    #[error("{0}")]
+    Dmap(#[from] DmapError)
+}
+
+impl From<Fitacf3Error> for PyErr {
+    fn from(value: Fitacf3Error) -> Self {
+        let msg = value.to_string();
+        PyValueError::new_err(msg)
+    }
 }
 
 /// Fits a single `RawacfRecord` into a `FitacfRecord`
@@ -33,7 +53,7 @@ pub enum Fitacf3Error {
 /// # Errors
 /// Will return `Err` if the `RawacfRecord` does not have all required fields for fitting,
 /// or if the data within the `RawacfRecord` is unsuitable for fitting for any reason.
-pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
+fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let raw: Rawacf = Rawacf::try_from(record).map_err(|e| {
         Fitacf3Error::InvalidRawacf(format!(
             "Could not extract all required fields from rawacf record: {e}"
@@ -66,6 +86,45 @@ pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfR
     fitting::xcf_phase_fitting(&mut range_list)?;
 
     determinations(&raw, &range_list, noise_power, hdw)
+}
+
+/// Fits a collection of `RawacfRecord`s into `FitacfRecord`s.
+///
+/// # Errors
+/// Will return `Err` if the `RawacfRecord`s do not have all required fields for fitting,
+/// or if the data within the `RawacfRecord`s are unsuitable for fitting for any reason.
+pub fn fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
+    let hdw = get_hdw(&raw_recs[0])?;
+
+    let mut fitacf_records = vec![];
+    for rec in raw_recs {
+        fitacf_records.push(fit_rawacf_record(&rec, &hdw)?);
+    }
+    Ok(fitacf_records)
+}
+
+/// Fits a collection of `RawacfRecord`s into `FitacfRecord`s in parallel.
+///
+/// # Errors
+/// Will return `Err` if the `RawacfRecord`s do not have all required fields for fitting,
+/// or if the data within the `RawacfRecord`s are unsuitable for fitting for any reason.
+pub fn par_fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
+    let hdw = get_hdw(&raw_recs[0])?;
+
+    // Fit the records!
+    let fitacf_results: Vec<Result<FitacfRecord>> = raw_recs
+        .par_iter()
+        .map(|rec| fit_rawacf_record(rec, &hdw))
+        .collect();
+
+    let mut fitacf_records = vec![];
+    for res in fitacf_results {
+        match res {
+            Ok(x) => fitacf_records.push(x),
+            Err(e) => Err(e)?,
+        }
+    }
+    Ok(fitacf_records)
 }
 
 /// Creates the lag table based on the data.
@@ -102,7 +161,7 @@ fn create_lag_list(record: &Rawacf) -> Vec<LagNode> {
     lags
 }
 
-/// Calculates the minimum power value for ACFs in the record (passing)
+/// Calculates the minimum power value for ACFs in the record
 fn acf_cutoff_power(rec: &Rawacf) -> f32 {
     let mut sorted_power_levels = rec.pwr0.clone().to_vec();
     sorted_power_levels.sort_by(f32::total_cmp); // sort floats
@@ -127,7 +186,7 @@ fn acf_cutoff_power(rec: &Rawacf) -> f32 {
     min_power as f32
 }
 
-/// Passing
+/// Applies a correction to the noise power estimate to account for selecting least-powerful ranges
 fn cutoff_power_correction(rec: &Rawacf) -> f64 {
     let std_dev = 1.0 / (rec.nave as f64).sqrt();
 

@@ -303,7 +303,7 @@ pub(crate) fn determinations(
             })
             .collect();
         let (elevation_phi0, elevation_intercept_error, elevation_intercept) =
-            calculate_elevation(&ranges, rec, &xcf_phi0, hdw);
+            calculate_elevation(ranges, rec, &xcf_phi0, hdw);
 
         fit_rec.insert(
             "slist".to_string(),

@@ -1,4 +1,4 @@
-use crate::error::BackscatterError;
+use crate::error::ProcdarnError;
 use crate::utils::hdw::HdwInfo;
 use chrono::{NaiveDate, NaiveDateTime};
 use dmap::error::DmapError;
@@ -228,7 +228,7 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(NaiveDateTime, i1
 /// * If the `stid` field in the `rec` does not match a known site
 /// * If the hardware file for the site is improperly formatted
 /// * If there is no applicable line in the hardware file for the date/time of the record
-pub fn get_hdw(rec: &RawacfRecord) -> Result<HdwInfo, BackscatterError> {
+pub fn get_hdw(rec: &RawacfRecord) -> Result<HdwInfo, ProcdarnError> {
     let (datetime, stid) = get_datetime_stid(rec)?;
     HdwInfo::new(stid, datetime).map_err(std::convert::Into::into)
 }
