@@ -3,7 +3,7 @@ use dmap::error::DmapError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum BackscatterError {
+pub enum ProcdarnError {
     /// Represents a bad DMAP record
     #[error("{0}")]
     Dmap(#[from] DmapError),
