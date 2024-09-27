@@ -1,5 +1,5 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
-use crate::fitting::fitacf3::fitstruct::{FitType, RangeNode};
+use crate::fitting::fitacf3::fitstruct::{PowerFitType, RangeNode};
 use crate::fitting::fitacf3::least_squares::LeastSquares;
 use crate::utils::rawacf::Rawacf;
 use std::f64::consts::PI;
@@ -7,7 +7,7 @@ use std::iter::zip;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
-/// passing
+/// Fits the power of ACF data.
 pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
 
@@ -17,32 +17,36 @@ pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.powers.t;
         let num_points = range.powers.ln_power.len();
         if t.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform acf power fitting - dimension mismatch".to_string(),
             ))?
         }
         range.lin_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, FitType::Linear));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Linear));
         range.quad_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, FitType::Quadratic));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Quadratic));
 
         let log_corrected_sigmas: Vec<f64> = zip(sigmas.iter(), log_powers.iter())
             .map(|(s, l)| s / l.exp())
             .collect();
 
-        range.lin_pwr_fit_err =
-            Some(lsq.two_parameter_line_fit(t, log_powers, &log_corrected_sigmas, FitType::Linear));
+        range.lin_pwr_fit_err = Some(lsq.two_parameter_line_fit(
+            t,
+            log_powers,
+            &log_corrected_sigmas,
+            PowerFitType::Linear,
+        ));
         range.quad_pwr_fit_err = Some(lsq.two_parameter_line_fit(
             t,
             log_powers,
             &log_corrected_sigmas,
-            FitType::Quadratic,
+            PowerFitType::Quadratic,
         ));
     }
     Ok(())
 }
 
-/// passing
+/// Fits the phase of ACF data.
 pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
@@ -52,7 +56,7 @@ pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform acf phase fitting - dimension mismatch".to_string(),
             ))?
         }
@@ -61,7 +65,7 @@ pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-/// passing
+/// Fits the phase of XCF data.
 pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
@@ -71,22 +75,22 @@ pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform xcf phase fitting - dimension mismatch".to_string(),
             ))?
         }
-        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, FitType::Linear));
+        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, PowerFitType::Linear));
     }
     Ok(())
 }
 
+/// Calculates standard deviations for phase and elevation fits.
 pub(crate) fn calculate_phase_and_elev_sigmas(
     ranges: &mut Vec<RangeNode>,
     rec: &Rawacf,
 ) -> Result<()> {
     for range in ranges {
         let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
-        // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
         let pwr_values: Vec<f64> = range
             .phases
             .t
@@ -103,8 +107,8 @@ pub(crate) fn calculate_phase_and_elev_sigmas(
             .map(|x| (x / denominator).sqrt())
             .collect();
         if phase_sigmas.iter().filter(|&x| !x.is_finite()).count() > 0 {
-            Err(Fitacf3Error::Message(format!(
-                "Phase sigmas bad at range {}",
+            Err(Fitacf3Error::BadFit(format!(
+                "Phase sigmas infinite at range {}",
                 range.range_idx
             )))?
         }
@@ -116,6 +120,7 @@ pub(crate) fn calculate_phase_and_elev_sigmas(
     Ok(())
 }
 
+/// Applies 2π phase unwrapping to ACF phases.
 pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     for range in ranges {
         let (mut slope_numerator, mut slope_denominator) = (0.0, 0.0);
@@ -187,6 +192,7 @@ pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// Applies 2π phase unwrapping to XCF phases
 pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     for range in ranges {
         let (mut sum_xy, mut sum_xx) = (0.0, 0.0);
@@ -196,7 +202,7 @@ pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.elev.t;
 
         match range.phase_fit.as_ref() {
-            None => Err(Fitacf3Error::Message(
+            None => Err(Fitacf3Error::BadFit(
                 "Phase fit must be defined to unwrap XCF phase".to_string(),
             ))?,
             Some(fit) => {
@@ -216,6 +222,7 @@ pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
+/// Determines which points need a 2π phase correction applied
 fn phase_correction(slope_estimate: f64, phases: &[f64], times: &[f64]) -> (Vec<f64>, i32) {
     let phase_predicted: Vec<f64> = times.iter().map(|t| t * slope_estimate).collect();
 

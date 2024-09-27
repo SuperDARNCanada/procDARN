@@ -1,6 +1,5 @@
 use backscatter_rs::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Error};
-use backscatter_rs::utils::hdw::HdwInfo;
-use chrono::NaiveDate;
+use backscatter_rs::utils::rawacf::get_hdw;
 use clap::Parser;
 use dmap::formats::fitacf::FitacfRecord;
 use rayon::prelude::*;
@@ -34,52 +33,21 @@ fn bin_main() -> BinResult<()> {
     let args = Args::parse();
 
     let mut rawacf_records = dmap::read_rawacf(args.infile)?;
-
-    let rec = &rawacf_records[0];
-    let file_datetime = NaiveDate::from_ymd_opt(
-        rec.get(&"time.yr".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.yr".to_string()))?
-            .clone()
-            .try_into()?,
-        rec.get(&"time.mo".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.mo".to_string()))?
-            .clone()
-            .try_into()?,
-        rec.get(&"time.dy".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.dy".to_string()))?
-            .clone()
-            .try_into()?,
-    )
-    .unwrap()
-    .and_hms_opt(
-        rec.get(&"time.hr".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.hr".to_string()))?
-            .clone()
-            .try_into()?,
-        rec.get(&"time.mt".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.mt".to_string()))?
-            .clone()
-            .try_into()?,
-        rec.get(&"time.sc".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get time.sc".to_string()))?
-            .clone()
-            .try_into()?,
-    )
-    .ok_or_else(|| Fitacf3Error::Message("Unable to interpret record timestamp".to_string()))?;
-    let hdw = HdwInfo::new(
-        rec.get(&"stid".to_string())
-            .ok_or_else(|| Fitacf3Error::Message("Could not get station ID".to_string()))?
-            .clone()
-            .try_into()?,
-        file_datetime,
-    )
-    .map_err(|e| Fitacf3Error::Message(e.details))?;
+    let hdw = get_hdw(&rawacf_records[0])?;
 
     // Fit the records!
-    let fitacf_records: Vec<FitacfRecord> = rawacf_records
+    let fitacf_results: Vec<Result<FitacfRecord, Fitacf3Error>> = rawacf_records
         .par_iter_mut()
-        .map(|rec| fit_rawacf_record(rec, &hdw).expect("Unable to fit record"))
+        .map(|rec| fit_rawacf_record(rec, &hdw))
         .collect();
+
+    let mut fitacf_records = vec![];
+    for res in fitacf_results {
+        match res {
+            Ok(x) => fitacf_records.push(x),
+            Err(e) => Err(e)?,
+        }
+    }
 
     // Write to file
     dmap::write_fitacf(fitacf_records, &args.outfile)?;

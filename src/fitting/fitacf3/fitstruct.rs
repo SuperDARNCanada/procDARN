@@ -32,8 +32,8 @@ impl RangeNode {
             RangeNode::calculate_cross_range_interference(range_num, record);
         let alpha_2 =
             RangeNode::calculate_alphas(range_num, &cross_range_interference, record, lags);
-        let phases = PhaseNode::new(record, "acfd", lags, index)?;
-        let elevations = PhaseNode::new(record, "xcfd", lags, index)?;
+        let phases = PhaseNode::new(record, PhaseFitType::Acf, lags, index)?;
+        let elevations = PhaseNode::new(record, PhaseFitType::Xcf, lags, index)?;
         let powers = PowerNode::new(record, lags, index, range_num, &alpha_2);
         Ok(RangeNode {
             range_idx: index,
@@ -105,22 +105,18 @@ pub(crate) struct PhaseNode {
 impl PhaseNode {
     pub(crate) fn new(
         rec: &Rawacf,
-        phase_type: &str,
+        phase_type: PhaseFitType,
         lags: &[LagNode],
         range_idx: usize,
     ) -> Result<PhaseNode, Fitacf3Error> {
         let acfd = match phase_type {
-            "acfd" => &rec.acfd,
-            "xcfd" => match &rec.xcfd {
+            PhaseFitType::Acf => &rec.acfd,
+            PhaseFitType::Xcf => match &rec.xcfd {
                 Some(ref x) => x,
-                None => Err(Fitacf3Error::Message(
+                None => Err(Fitacf3Error::InvalidRawacf(
                     "Cannot find xcfs in data".to_string(),
                 ))?,
             },
-            _ => Err(Fitacf3Error::Message(format!(
-                "Unknown type for PhaseNode: {}",
-                phase_type
-            )))?,
         };
         let phases = zip(
             acfd.slice(s![range_idx, .., 0]),
@@ -227,7 +223,12 @@ pub(crate) struct Sums {
     pub sum_xy: f64,
 }
 
-pub(crate) enum FitType {
+pub(crate) enum PowerFitType {
     Linear,
     Quadratic,
+}
+
+pub(crate) enum PhaseFitType {
+    Acf,
+    Xcf,
 }

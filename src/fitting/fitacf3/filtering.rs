@@ -5,6 +5,7 @@ use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 use crate::utils::rawacf::Rawacf;
 use is_close::is_close;
 
+/// Finds all samples that were collected during transmission of a pulse.
 pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
     let mut pulses_in_us: Vec<i32> = rec
         .ptab
@@ -55,6 +56,7 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
     bad_samples
 }
 
+/// Removes all lags that contain samples collected during transmission of a pulse.
 pub(crate) fn filter_tx_overlapped_lags(
     rec: &Rawacf,
     lags: Vec<LagNode>,
@@ -80,6 +82,7 @@ pub(crate) fn filter_tx_overlapped_lags(
     }
 }
 
+/// Removes all lags that have infinite power values.
 pub(crate) fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
     for range in ranges {
         let mut infinite_indices = vec![];
@@ -95,6 +98,7 @@ pub(crate) fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// Removes all lags after a lag with low power
 pub(crate) fn filter_low_power_lags(rec: &Rawacf, ranges: &mut Vec<RangeNode>) {
     if rec.nave <= 0 {
         return;
@@ -134,6 +138,7 @@ pub(crate) fn filter_low_power_lags(rec: &Rawacf, ranges: &mut Vec<RangeNode>) {
     }
 }
 
+/// Removes range gates that either contain too weak of a fit, or used too few lags when fitting.
 pub(crate) fn filter_bad_acfs(rec: &Rawacf, ranges: &mut Vec<RangeNode>, noise_power: f32) {
     if rec.nave <= 0 {
         return;
@@ -164,6 +169,7 @@ pub(crate) fn filter_bad_acfs(rec: &Rawacf, ranges: &mut Vec<RangeNode>, noise_p
     }
 }
 
+/// Removes all ranges that have not had phase, lambda power, or quadratic power fitted
 pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> {
     let mut bad_indices = vec![];
     for (idx, range) in ranges.iter().enumerate() {
@@ -171,7 +177,7 @@ pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3
             .phase_fit
             .as_ref()
             .ok_or_else(|| {
-                Fitacf3Error::Message("Cannot filter fits since phase not fit".to_string())
+                Fitacf3Error::BadFit("Cannot filter fits since phase not fit".to_string())
             })?
             .slope
             == 0.0)
@@ -179,7 +185,7 @@ pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3
                 .lin_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::Message(
+                    Fitacf3Error::BadFit(
                         "Cannot filter fits since power not linearly fit".to_string(),
                     )
                 })?
@@ -189,7 +195,7 @@ pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3
                 .quad_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::Message(
+                    Fitacf3Error::BadFit(
                         "Cannot filter fits since power not quadratically fit".to_string(),
                     )
                 })?

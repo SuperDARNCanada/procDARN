@@ -1,3 +1,4 @@
+//! Error type for Fitacfv3 algorithm
 use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::filtering;
 use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
@@ -5,10 +6,8 @@ use crate::fitting::fitacf3::fitting;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use dmap::formats::{fitacf::FitacfRecord, rawacf::RawacfRecord};
-use std::error::Error;
 use std::f64::consts::PI;
-use std::fmt;
-use std::fmt::Display;
+use thiserror::Error;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
@@ -17,28 +16,21 @@ pub const ALPHA_CUTOFF: f32 = 2.0;
 pub const ACF_SNR_CUTOFF: f64 = 1.0;
 pub const MIN_LAGS: i16 = 3;
 
-#[derive(Debug, Clone)]
+/// Enum of the possible error variants that may be encountered
+#[derive(Error, Debug)]
 pub enum Fitacf3Error {
-    Message(String),
-    Lookup(String),
-    Mismatch { msg: String },
-}
+    /// Represents an error in the Rawacf record that is attempting to be fitted
+    #[error("{0}")]
+    InvalidRawacf(String),
 
-impl Error for Fitacf3Error {}
-
-impl Display for Fitacf3Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Fitacf3Error::Message(msg) => write!(f, "{}", msg),
-            Fitacf3Error::Lookup(msg) => write!(f, "{}", msg),
-            Fitacf3Error::Mismatch { msg } => write!(f, "{}", msg),
-        }
-    }
+    /// Represents a bad fit of the record, for any reason
+    #[error("{0}")]
+    BadFit(String),
 }
 
 pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let raw: Rawacf = Rawacf::try_from(record).map_err(|e| {
-        Fitacf3Error::Message(format!(
+        Fitacf3Error::InvalidRawacf(format!(
             "Could not extract all required fields from rawacf record: {e}"
         ))
     })?;

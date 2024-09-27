@@ -401,7 +401,7 @@ pub(crate) fn determinations(
         );
     }
     let new_rec = FitacfRecord::new(&mut fit_rec).map_err(|e| {
-        Fitacf3Error::Message(format!(
+        Fitacf3Error::BadFit(format!(
             "Could not create valid Fitacf record from results: {e}"
         ))
     })?;

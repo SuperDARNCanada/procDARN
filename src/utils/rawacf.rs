@@ -1,3 +1,6 @@
+use crate::error::BackscatterError;
+use crate::utils::hdw::HdwInfo;
+use chrono::{NaiveDate, NaiveDateTime};
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
@@ -174,4 +177,51 @@ impl TryFrom<&RawacfRecord> for Rawacf {
             },
         })
     }
+}
+
+pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(NaiveDateTime, i16), DmapError> {
+    let rec_date: NaiveDate = NaiveDate::from_ymd_opt(
+        rec.get(&"time.yr".to_string())
+            .ok_or_else(|| DmapError::InvalidScalar("Missing time.yr".to_string()))?
+            .clone()
+            .try_into()?,
+        rec.get(&"time.mo".to_string())
+            .ok_or_else(|| DmapError::InvalidScalar("Missing time.mo".to_string()))?
+            .clone()
+            .try_into()?,
+        rec.get(&"time.dy".to_string())
+            .ok_or_else(|| DmapError::InvalidScalar("Missing time.dy".to_string()))?
+            .clone()
+            .try_into()?,
+    )
+    .ok_or_else(|| DmapError::InvalidRecord("Unable to parse date".to_string()))?;
+    let rec_datetime = rec_date
+        .and_hms_opt(
+            rec.get(&"time.hr".to_string())
+                .ok_or_else(|| DmapError::InvalidScalar("Missing time.hr".to_string()))?
+                .clone()
+                .try_into()?,
+            rec.get(&"time.mt".to_string())
+                .ok_or_else(|| DmapError::InvalidScalar("Missing time.mt".to_string()))?
+                .clone()
+                .try_into()?,
+            rec.get(&"time.sc".to_string())
+                .ok_or_else(|| DmapError::InvalidScalar("Missing time.sc".to_string()))?
+                .clone()
+                .try_into()?,
+        )
+        .ok_or_else(|| DmapError::InvalidRecord("Unable to parse timestamp".to_string()))?;
+
+    let station_id: i16 = rec
+        .get(&"stid".to_string())
+        .ok_or_else(|| DmapError::InvalidScalar("Missing stid".to_string()))?
+        .clone()
+        .try_into()?;
+
+    Ok((rec_datetime, station_id))
+}
+
+pub fn get_hdw(rec: &RawacfRecord) -> Result<HdwInfo, BackscatterError> {
+    let (datetime, stid) = get_datetime_stid(rec)?;
+    HdwInfo::new(stid, datetime).map_err(|e| e.into())
 }
