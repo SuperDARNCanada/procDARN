@@ -10,47 +10,47 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
     let mut pulses_in_us: Vec<i32> = rec
         .ptab
         .iter()
-        .map(|&p| p as i32 * rec.mpinc as i32)
+        .map(|&p| i32::from(p) * i32::from(rec.mpinc))
         .collect();
 
     if rec.offset != 0 {
         if rec.channel == 1 {
             let pulses_stereo: Vec<i32> = pulses_in_us
                 .iter()
-                .map(|&p| p - rec.offset as i32)
+                .map(|&p| p - i32::from(rec.offset))
                 .collect();
             pulses_in_us.extend(pulses_stereo);
         } else if rec.channel == 2 {
             let pulses_stereo: Vec<i32> = pulses_in_us
                 .iter()
-                .map(|&p| p + rec.offset as i32)
+                .map(|&p| p + i32::from(rec.offset))
                 .collect();
             pulses_in_us.extend(pulses_stereo);
         }
     }
     pulses_in_us.sort();
 
-    let mut ts = rec.lagfr as i32;
+    let mut ts = i32::from(rec.lagfr);
     let mut t1;
     let mut t2;
     let mut sample = 0;
     let mut bad_samples = vec![];
 
     for pulse_us in pulses_in_us {
-        t1 = pulse_us - rec.txpl as i32 / 2;
-        t2 = t1 + 3 * rec.txpl as i32 / 2 + 100;
+        t1 = pulse_us - i32::from(rec.txpl) / 2;
+        t2 = t1 + 3 * i32::from(rec.txpl) / 2 + 100;
 
         // Start incrementing the sample until we find a sample that lies within a pulse
         while ts < t1 {
             sample += 1;
-            ts += rec.smsep as i32;
+            ts += i32::from(rec.smsep);
         }
 
         // Blank all samples within the pulse duration
         while (ts >= t1) && (ts <= t2) {
             bad_samples.push(sample);
             sample += 1;
-            ts += rec.smsep as i32;
+            ts += i32::from(rec.smsep);
         }
     }
     bad_samples
@@ -59,7 +59,7 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
 /// Removes all lags that contain samples collected during transmission of a pulse.
 pub(crate) fn filter_tx_overlapped_lags(
     rec: &Rawacf,
-    lags: Vec<LagNode>,
+    lags: &[LagNode],
     ranges: &mut Vec<RangeNode>,
 ) {
     let bad_samples = mark_bad_samples(rec);
@@ -108,8 +108,8 @@ pub(crate) fn filter_low_power_lags(rec: &Rawacf, ranges: &mut Vec<RangeNode>) {
         if range.powers.ln_power.is_empty() {
             continue;
         }
-        let log_sigma_fluc = (FLUCTUATION_CUTOFF_COEFFICIENT * rec.pwr0[range_num]
-            / ((2 * rec.nave) as f32).sqrt())
+        let log_sigma_fluc = (FLUCTUATION_CUTOFF_COEFFICIENT * rec.pwr0[range_num as usize]
+            / f32::from(2 * rec.nave).sqrt())
         .ln();
         let mut bad_indices = vec![];
         let mut cutoff_lag = rec.mplgs as usize + 1;
@@ -146,8 +146,7 @@ pub(crate) fn filter_bad_acfs(rec: &Rawacf, ranges: &mut Vec<RangeNode>, noise_p
     let cutoff_power = noise_power * 2.0;
     let mut bad_indices = vec![];
     for (idx, range) in ranges.iter().enumerate() {
-        let range_num = range.range_num;
-        let power = rec.pwr0[range_num];
+        let power = rec.pwr0[range.range_num as usize];
         let num_powers = range.powers.ln_power.len();
         if (power <= cutoff_power) || (num_powers < MIN_LAGS as usize) {
             bad_indices.push(idx);

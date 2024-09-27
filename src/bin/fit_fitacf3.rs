@@ -1,7 +1,7 @@
-use backscatter_rs::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Error};
-use backscatter_rs::utils::rawacf::get_hdw;
 use clap::Parser;
 use dmap::formats::fitacf::FitacfRecord;
+use procdarn::fitting::fitacf3::fitacf_v3::{fit_rawacf_record, Fitacf3Error};
+use procdarn::utils::rawacf::get_hdw;
 use rayon::prelude::*;
 use std::path::PathBuf;
 
@@ -11,7 +11,7 @@ fn main() {
     if let Err(e) = bin_main() {
         eprintln!("error: {e}");
         if let Some(e) = e.source() {
-            eprintln!("error: {e}")
+            eprintln!("error: {e}");
         }
         std::process::exit(1);
     }

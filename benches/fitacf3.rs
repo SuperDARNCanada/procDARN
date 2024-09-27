@@ -1,8 +1,8 @@
-use backscatter_rs::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
-use backscatter_rs::utils::rawacf::get_hdw;
 use criterion::{criterion_group, criterion_main, Criterion};
 use dmap;
 use dmap::formats::{dmap::Record, rawacf::RawacfRecord};
+use procdarn::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
+use procdarn::utils::rawacf::get_hdw;
 use rayon::prelude::*;
 use std::fs::File;
 

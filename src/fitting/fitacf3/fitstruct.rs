@@ -5,7 +5,7 @@ use std::iter::zip;
 
 #[derive(Debug)]
 pub(crate) struct RangeNode {
-    pub range_num: usize,
+    pub range_num: u16,
     pub range_idx: usize,
     // pub cross_range_interference: Vec<f64>,
     // pub refractive_idx: f32,
@@ -32,12 +32,12 @@ impl RangeNode {
             RangeNode::calculate_cross_range_interference(range_num, record);
         let alpha_2 =
             RangeNode::calculate_alphas(range_num, &cross_range_interference, record, lags);
-        let phases = PhaseNode::new(record, PhaseFitType::Acf, lags, index)?;
-        let elevations = PhaseNode::new(record, PhaseFitType::Xcf, lags, index)?;
+        let phases = PhaseNode::new(record, &PhaseFitType::Acf, lags, index)?;
+        let elevations = PhaseNode::new(record, &PhaseFitType::Xcf, lags, index)?;
         let powers = PowerNode::new(record, lags, index, range_num, &alpha_2);
         Ok(RangeNode {
             range_idx: index,
-            range_num,
+            range_num: range_num as u16,
             // cross_range_interference,
             // refractive_idx: 1.0,
             power_alpha_2: alpha_2.clone(),
@@ -82,7 +82,7 @@ impl RangeNode {
         lags: &[LagNode],
     ) -> Vec<f64> {
         let mut alpha_2: Vec<f64> = vec![];
-        for lag in lags.iter() {
+        for lag in lags {
             let pulse_1_interference = cross_range_interference[lag.pulses[0]];
             let pulse_2_interference = cross_range_interference[lag.pulses[1]];
             let lag_zero_power = rec.pwr0[range_num] as f64;
@@ -105,7 +105,7 @@ pub(crate) struct PhaseNode {
 impl PhaseNode {
     pub(crate) fn new(
         rec: &Rawacf,
-        phase_type: PhaseFitType,
+        phase_type: &PhaseFitType,
         lags: &[LagNode],
         range_idx: usize,
     ) -> Result<PhaseNode, Fitacf3Error> {
@@ -223,11 +223,13 @@ pub(crate) struct Sums {
     pub sum_xy: f64,
 }
 
+#[derive(Copy, Clone)]
 pub(crate) enum PowerFitType {
     Linear,
     Quadratic,
 }
 
+#[derive(Copy, Clone)]
 pub(crate) enum PhaseFitType {
     Acf,
     Xcf,

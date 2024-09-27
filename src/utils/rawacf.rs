@@ -47,7 +47,7 @@ pub(crate) struct Rawacf {
     pub frang: i16,
     pub rsep: i16,
     pub xcf: i16,
-    pub tfreq: i16,
+    pub tfreq: f32, // differs from RST, used as f32 in all calculations
     pub mxpwr: i32,
     pub lvmax: i32,
     pub combf: String,
@@ -221,7 +221,14 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(NaiveDateTime, i1
     Ok((rec_datetime, station_id))
 }
 
+/// Gets the hardware file applicable to `rec`
+///
+/// # Errors
+/// * If the record contains invalid date/time fields or station ID field
+/// * If the `stid` field in the `rec` does not match a known site
+/// * If the hardware file for the site is improperly formatted
+/// * If there is no applicable line in the hardware file for the date/time of the record
 pub fn get_hdw(rec: &RawacfRecord) -> Result<HdwInfo, BackscatterError> {
     let (datetime, stid) = get_datetime_stid(rec)?;
-    HdwInfo::new(stid, datetime).map_err(|e| e.into())
+    HdwInfo::new(stid, datetime).map_err(std::convert::Into::into)
 }

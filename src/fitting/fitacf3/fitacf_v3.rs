@@ -28,6 +28,11 @@ pub enum Fitacf3Error {
     BadFit(String),
 }
 
+/// Fits a single `RawacfRecord` into a `FitacfRecord`
+///
+/// # Errors
+/// Will return `Err` if the `RawacfRecord` does not have all required fields for fitting,
+/// or if the data within the `RawacfRecord` is unsuitable for fitting for any reason.
 pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecord> {
     let raw: Rawacf = Rawacf::try_from(record).map_err(|e| {
         Fitacf3Error::InvalidRawacf(format!(
@@ -45,10 +50,10 @@ pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfR
     for i in 0..raw.slist.len() {
         let range_num = raw.slist[i];
         if raw.pwr0[range_num as usize] != 0.0 {
-            range_list.push(RangeNode::new(i, range_num as usize, &raw, &lags)?)
+            range_list.push(RangeNode::new(i, range_num as usize, &raw, &lags)?);
         }
     }
-    filtering::filter_tx_overlapped_lags(&raw, lags, &mut range_list);
+    filtering::filter_tx_overlapped_lags(&raw, &lags, &mut range_list);
     filtering::filter_infinite_lags(&mut range_list);
     filtering::filter_low_power_lags(&raw, &mut range_list);
     filtering::filter_bad_acfs(&raw, &mut range_list, noise_power);
@@ -60,7 +65,7 @@ pub fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfR
     fitting::xcf_phase_unwrap(&mut range_list)?;
     fitting::xcf_phase_fitting(&mut range_list)?;
 
-    determinations(&raw, range_list, noise_power, hdw)
+    determinations(&raw, &range_list, noise_power, hdw)
 }
 
 /// Creates the lag table based on the data.
@@ -84,11 +89,11 @@ fn create_lag_list(record: &Rawacf) -> Vec<LagNode> {
             }
         }
         let sample_base_1 =
-            (lag_table[[i, 0]] * (multi_pulse_increment / sample_separation)) as i32;
+            i32::from(lag_table[[i, 0]] * (multi_pulse_increment / sample_separation));
         let sample_base_2 =
-            (lag_table[[i, 1]] * (multi_pulse_increment / sample_separation)) as i32;
+            i32::from(lag_table[[i, 1]] * (multi_pulse_increment / sample_separation));
         lags.push(LagNode {
-            lag_num: number as i32,
+            lag_num: i32::from(number),
             pulses: [pulse_1_idx, pulse_2_idx],
             sample_base_1,
             sample_base_2,
@@ -100,7 +105,7 @@ fn create_lag_list(record: &Rawacf) -> Vec<LagNode> {
 /// Calculates the minimum power value for ACFs in the record (passing)
 fn acf_cutoff_power(rec: &Rawacf) -> f32 {
     let mut sorted_power_levels = rec.pwr0.clone().to_vec();
-    sorted_power_levels.sort_by(|a, b| a.total_cmp(b)); // sort floats
+    sorted_power_levels.sort_by(f32::total_cmp); // sort floats
     let mut i: usize = 0;
     let mut j: f64 = 0.0;
     let mut min_power: f64 = 0.0;

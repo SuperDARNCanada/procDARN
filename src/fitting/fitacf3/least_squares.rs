@@ -27,10 +27,10 @@ impl LeastSquares {
         x_vals: &[f64],
         y_vals: &[f64],
         sigmas: &[f64],
-        fit_type: PowerFitType,
+        fit_type: &PowerFitType,
     ) -> FittedData {
-        let mut fitted: FittedData = Default::default();
-        let sums = Self::find_sums(x_vals, y_vals, sigmas, &fit_type);
+        let mut fitted: FittedData = FittedData::default();
+        let sums = Self::find_sums(x_vals, y_vals, sigmas, fit_type);
         fitted.delta = sums.sum * sums.sum_xx - sums.sum_x * sums.sum_x;
         fitted.intercept = (sums.sum_xx * sums.sum_y - sums.sum_x * sums.sum_xy) / fitted.delta;
         fitted.slope = (sums.sum * sums.sum_xy - sums.sum_x * sums.sum_y) / fitted.delta;
@@ -42,7 +42,7 @@ impl LeastSquares {
         let delta_chi_2 = self.delta_chi_2[self.confidence][self.degrees_of_freedom];
         fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();
         fitted.delta_slope = delta_chi_2.sqrt() * fitted.variance_slope.sqrt();
-        fitted.chi_squared = Self::calculate_chi_2(&fitted, x_vals, y_vals, sigmas, &fit_type);
+        fitted.chi_squared = Self::calculate_chi_2(&fitted, x_vals, y_vals, sigmas, fit_type);
         fitted
     }
     pub(crate) fn one_parameter_line_fit(
@@ -51,7 +51,7 @@ impl LeastSquares {
         y_vals: &[f64],
         sigmas: &[f64],
     ) -> FittedData {
-        let mut fitted: FittedData = Default::default();
+        let mut fitted: FittedData = FittedData::default();
         let sums = Self::find_sums(x_vals, y_vals, sigmas, &PowerFitType::Linear);
 
         fitted.slope = sums.sum_xy / sums.sum_xx;
@@ -69,7 +69,7 @@ impl LeastSquares {
         let nonzero_sigma: Vec<usize> = sigmas
             .iter()
             .enumerate()
-            .filter_map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
+            .filter_map(|(i, &x)| if x == 0.0 { None } else { Some(i) })
             .collect();
         let sigma_squared: Vec<f64> = nonzero_sigma
             .iter()
@@ -119,12 +119,12 @@ impl LeastSquares {
         let nonzero_sigma: Vec<usize> = sigmas
             .iter()
             .enumerate()
-            .filter_map(|(i, &x)| if x != 0.0 { Some(i) } else { None })
+            .filter_map(|(i, &x)| if x == 0.0 { None } else { Some(i) })
             .collect();
         let mut chi: Vec<f64> = vec![];
         match fit_type {
             PowerFitType::Linear => {
-                for &i in nonzero_sigma.iter() {
+                for &i in &nonzero_sigma {
                     chi.push(
                         ((y_vals[i] - fitted.intercept) - (fitted.slope * x_vals[i])) / sigmas[i],
                     );
@@ -132,7 +132,7 @@ impl LeastSquares {
                 chi.iter().map(|x| x * x).sum()
             }
             PowerFitType::Quadratic => {
-                for &i in nonzero_sigma.iter() {
+                for &i in &nonzero_sigma {
                     chi.push(
                         ((y_vals[i] - fitted.intercept) - (fitted.slope * x_vals[i] * x_vals[i]))
                             / sigmas[i],

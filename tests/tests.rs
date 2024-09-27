@@ -1,8 +1,8 @@
 use assert_unordered::assert_eq_unordered;
-use backscatter_rs::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
-use backscatter_rs::utils::rawacf::get_hdw;
 use dmap::types::{DmapField, DmapVec};
 use ndarray::Array;
+use procdarn::fitting::fitacf3::fitacf_v3::fit_rawacf_record;
+use procdarn::utils::rawacf::get_hdw;
 use std::iter::zip;
 
 #[test]

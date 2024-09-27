@@ -47,6 +47,12 @@ pub struct HdwInfo {
 }
 
 impl HdwInfo {
+    /// Gets the hardware file information for a site at a particular time.
+    ///
+    /// # Errors
+    /// * If the `station_id` does not match the known sites
+    /// * If the hardware file does not have an entry applicable for the `datetime`
+    /// * If the hardware file is not properly formatted
     pub fn new(station_id: i16, datetime: NaiveDateTime) -> Result<HdwInfo, HdwError> {
         let site_name = match station_id {
             209 => "ade",
@@ -94,7 +100,8 @@ impl HdwInfo {
             19 => "zho",
             x => Err(HdwError::InvalidStation(x))?,
         };
-        let hdw_file = Hdw::get(format!("hdw.dat.{}", site_name).as_str()).unwrap();
+        let hdw_file = Hdw::get(format!("hdw.dat.{site_name}").as_str())
+            .ok_or_else(|| HdwError::InvalidFile(format!("No file named hdw.dat.{site_name}")))?;
         let mut hdw_params: Vec<HdwInfo> = vec![];
         let reader = BufReader::new(hdw_file.data.as_ref()).lines();
         for line in reader {
@@ -106,7 +113,7 @@ impl HdwInfo {
                 let date = elements[2];
                 let time = elements[3];
                 let validity_date = NaiveDateTime::parse_from_str(
-                    format!("{} {}", date, time).as_str(),
+                    format!("{date} {time}").as_str(),
                     "%Y%m%d %H:%M:%S",
                 )
                 .map_err(|_| {
@@ -197,7 +204,7 @@ impl HdwInfo {
                             "Unable to read max number of beams from hdw file".to_string(),
                         )
                     })?,
-                })
+                });
             }
         }
         hdw_params.pop().ok_or_else(|| {

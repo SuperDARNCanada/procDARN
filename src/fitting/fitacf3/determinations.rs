@@ -12,7 +12,7 @@ use std::iter::zip;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
-const LIGHTSPEED: f32 = 299792458.0;
+const LIGHTSPEED: f32 = 299_792_458.0;
 const KHZ_TO_HZ: f32 = 1000.0;
 const US_TO_S: f32 = 1e-6;
 pub const ORIGIN_CODE: i8 = 1;
@@ -21,7 +21,7 @@ pub const W_MAX: f32 = 90.0;
 
 pub(crate) fn determinations(
     rec: &Rawacf,
-    ranges: Vec<RangeNode>,
+    ranges: &[RangeNode],
     noise_power: f32,
     hdw: &HdwInfo,
 ) -> Result<FitacfRecord, Fitacf3Error> {
@@ -93,7 +93,7 @@ pub(crate) fn determinations(
     fit_rec.insert("frang".to_string(), rec.frang.into());
     fit_rec.insert("rsep".to_string(), rec.rsep.into());
     fit_rec.insert("xcf".to_string(), rec.xcf.into());
-    fit_rec.insert("tfreq".to_string(), rec.tfreq.into());
+    fit_rec.insert("tfreq".to_string(), (rec.tfreq.round() as i16).into());
     fit_rec.insert("mxpwr".to_string(), rec.mxpwr.into());
     fit_rec.insert("lvmax".to_string(), rec.lvmax.into());
     fit_rec.insert("combf".to_string(), rec.combf.clone().into());
@@ -139,7 +139,7 @@ pub(crate) fn determinations(
                     .as_ref()
                     .expect("Unable to make fitacf without linear fitted power")
                     .intercept as f32
-                    / (10.0_f32).ln()
+                    / 10.0_f32.ln()
                     - noise_db
             })
             .collect();
@@ -180,7 +180,7 @@ pub(crate) fn determinations(
             })
             .collect();
         let velocity_conversion: f32 =
-            LIGHTSPEED * hdw.velocity_sign / (4.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
+            LIGHTSPEED * hdw.velocity_sign / (4.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ);
         let velocity: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -202,8 +202,7 @@ pub(crate) fn determinations(
                     * velocity_conversion
             })
             .collect();
-        let width_conversion: f32 =
-            LIGHTSPEED * 2.0 / (4.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
+        let width_conversion: f32 = LIGHTSPEED * 2.0 / (4.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ);
         let spectral_width_linear: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -227,7 +226,7 @@ pub(crate) fn determinations(
             })
             .collect();
         let quadratic_width_conversion: f32 =
-            LIGHTSPEED * 2.0_f32.ln().sqrt() / (PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ);
+            LIGHTSPEED * 2.0_f32.ln().sqrt() / (PI_f32 * rec.tfreq * KHZ_TO_HZ);
         let spectral_width_quadratic: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -277,7 +276,7 @@ pub(crate) fn determinations(
             })
             .collect();
         let groundscatter_flag: Vec<i8> = zip(velocity.iter(), spectral_width_linear.iter())
-            .map(|(v, w)| (v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 0.0) as i8)
+            .map(|(v, w)| i8::from(v.abs() - (V_MAX - w * (V_MAX / W_MAX)) < 0.0))
             .collect();
         let xcfs = &rec.xcfd.as_ref().expect("Unable to make fitacf xcf_phi0");
         let xcf_phi0: Vec<f32> = ranges
@@ -431,12 +430,12 @@ fn calculate_elevation(
         phi_sign = -1.0;
         elevation_corr *= -1.0;
     }
-    let azimuth_offset = hdw.max_num_beams as f32 / 2.0 - 0.5;
-    let phi_0 = (hdw.beam_separation * (rec.bmnum as f32 - azimuth_offset))
+    let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
+    let phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
         .to_radians()
         .cos(); // todo: Add in beam offset
-    let wave_num = 2.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ / LIGHTSPEED;
-    let cable_offset = -2.0 * PI_f32 * rec.tfreq as f32 * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S;
+    let wave_num = 2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ / LIGHTSPEED;
+    let cable_offset = -2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S;
     let phase_diff_max = phi_sign * wave_num * array_separation * phi_0 + cable_offset;
     let mut psi: Vec<f32> = ranges
         .iter()

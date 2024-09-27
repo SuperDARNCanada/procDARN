@@ -19,12 +19,12 @@ pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         if t.len() != num_points || sigmas.len() != num_points {
             Err(Fitacf3Error::BadFit(
                 "Cannot perform acf power fitting - dimension mismatch".to_string(),
-            ))?
+            ))?;
         }
         range.lin_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Linear));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, &PowerFitType::Linear));
         range.quad_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Quadratic));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, &PowerFitType::Quadratic));
 
         let log_corrected_sigmas: Vec<f64> = zip(sigmas.iter(), log_powers.iter())
             .map(|(s, l)| s / l.exp())
@@ -34,13 +34,13 @@ pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
             t,
             log_powers,
             &log_corrected_sigmas,
-            PowerFitType::Linear,
+            &PowerFitType::Linear,
         ));
         range.quad_pwr_fit_err = Some(lsq.two_parameter_line_fit(
             t,
             log_powers,
             &log_corrected_sigmas,
-            PowerFitType::Quadratic,
+            &PowerFitType::Quadratic,
         ));
     }
     Ok(())
@@ -58,7 +58,7 @@ pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         if phases.len() != num_points || sigmas.len() != num_points {
             Err(Fitacf3Error::BadFit(
                 "Cannot perform acf phase fitting - dimension mismatch".to_string(),
-            ))?
+            ))?;
         }
         range.phase_fit = Some(lsq.one_parameter_line_fit(t, phases, sigmas));
     }
@@ -77,9 +77,9 @@ pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         if phases.len() != num_points || sigmas.len() != num_points {
             Err(Fitacf3Error::BadFit(
                 "Cannot perform xcf phase fitting - dimension mismatch".to_string(),
-            ))?
+            ))?;
         }
-        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, PowerFitType::Linear));
+        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, &PowerFitType::Linear));
     }
     Ok(())
 }
@@ -110,7 +110,7 @@ pub(crate) fn calculate_phase_and_elev_sigmas(
             Err(Fitacf3Error::BadFit(format!(
                 "Phase sigmas infinite at range {}",
                 range.range_idx
-            )))?
+            )))?;
         }
         range.phases.std_dev = phase_sigmas.clone();
         // Since lag 0 phase is included for elevation fit, set lag 0 sigma the same as lag 1 sigma
@@ -136,19 +136,19 @@ pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
 
         let mut first_time = true;
         for (p, (s, t)) in zip(phases.iter(), zip(sigmas.iter(), t.iter())) {
-            if !first_time {
+            if first_time {
+                first_time = false;
+            } else {
                 let phase_diff = p - phase_prev;
                 let sigma_bar = (s + sigma_prev) / 2.0;
                 let t_diff = t - t_prev;
                 if phase_diff.abs() < PI {
                     slope_numerator += phase_diff / (sigma_bar * sigma_bar * t_diff);
-                    slope_denominator += 1.0 / (sigma_bar * sigma_bar)
+                    slope_denominator += 1.0 / (sigma_bar * sigma_bar);
                 }
                 phase_prev = *p;
                 sigma_prev = *s;
                 t_prev = *t;
-            } else {
-                first_time = false;
             }
         }
 
