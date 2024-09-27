@@ -11,6 +11,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::PyErr;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::f64::consts::PI;
+use dmap::error::DmapError;
 use thiserror::Error;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
@@ -34,6 +35,10 @@ pub enum Fitacf3Error {
     /// Unable to get hardware file information
     #[error("{0}")]
     Hdw(#[from] ProcdarnError),
+
+    /// Invalid DMAP file
+    #[error("{0}")]
+    Dmap(#[from] DmapError)
 }
 
 impl From<Fitacf3Error> for PyErr {

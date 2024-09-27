@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use crate::fitting::fitacf3::fitacf_v3::par_fitacf3;
+use crate::fitting::fitacf3::fitacf_v3::{Fitacf3Error, par_fitacf3};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::dmap::Record;
@@ -17,7 +17,7 @@ pub mod utils;
 /// Fits a list of RAWACF records into FITACF records using the FITACFv3 algorithm.
 #[pyfunction]
 #[pyo3(name = "fitacf3")]
-#[pyo3(text_signature = "(recs: list[dict])")]
+#[pyo3(text_signature = "(recs: list[dict], /)")]
 fn fitacf3_py(
     mut recs: Vec<IndexMap<String, DmapField>>,
 ) -> PyResult<Vec<IndexMap<String, DmapField>>> {
@@ -39,6 +39,29 @@ fn fitacf3_py(
         .map(|rec| rec.inner())
         .collect();
     Ok(fitacf_recs)
+}
+
+/// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
+fn file_fitacf3(
+    raw_file: PathBuf,
+    fit_file: PathBuf
+) -> Result<(), Fitacf3Error> {
+    let rawacf_records = dmap::read_rawacf(raw_file)?;
+    let fitacf_records = par_fitacf3(rawacf_records)?;
+    dmap::write_fitacf(fitacf_records, &fit_file)?;
+    Ok(())
+}
+
+/// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
+#[pyfunction]
+#[pyo3(name = "file_fitacf3")]
+#[pyo3(text_signature = "(rawacf_file: str, fitacf_file: str, /)")]
+fn file_fitacf3_py(
+    raw_file: PathBuf,
+    fit_file: PathBuf
+) -> PyResult<()> {
+    file_fitacf3(raw_file, fit_file)?;
+    Ok(())
 }
 
 #[derive(Parser, Debug)]
@@ -75,6 +98,7 @@ fn fitacf3_cli(py: Python) -> PyResult<()> {
 #[pymodule]
 fn procdarn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fitacf3_py, m)?)?;
+    m.add_function(wrap_pyfunction!(file_fitacf3_py, m)?)?;
     m.add_wrapped(wrap_pyfunction!(fitacf3_cli))?;
 
     Ok(())
