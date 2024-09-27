@@ -1,14 +1,14 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
-use crate::fitting::fitacf3::fitstruct::{FitType, RangeNode};
+use crate::fitting::fitacf3::fitstruct::{PowerFitType, RangeNode};
 use crate::fitting::fitacf3::least_squares::LeastSquares;
-use dmap::formats::RawacfRecord;
+use crate::utils::rawacf::Rawacf;
 use std::f64::consts::PI;
 use std::iter::zip;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
-/// passing
-pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+/// Fits the power of ACF data.
+pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
 
     for range in ranges {
@@ -17,33 +17,37 @@ pub fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.powers.t;
         let num_points = range.powers.ln_power.len();
         if t.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform acf power fitting - dimension mismatch".to_string(),
             ))?
         }
         range.lin_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, FitType::Linear));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Linear));
         range.quad_pwr_fit =
-            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, FitType::Quadratic));
+            Some(lsq.two_parameter_line_fit(t, log_powers, sigmas, PowerFitType::Quadratic));
 
         let log_corrected_sigmas: Vec<f64> = zip(sigmas.iter(), log_powers.iter())
             .map(|(s, l)| s / l.exp())
             .collect();
 
-        range.lin_pwr_fit_err =
-            Some(lsq.two_parameter_line_fit(t, log_powers, &log_corrected_sigmas, FitType::Linear));
+        range.lin_pwr_fit_err = Some(lsq.two_parameter_line_fit(
+            t,
+            log_powers,
+            &log_corrected_sigmas,
+            PowerFitType::Linear,
+        ));
         range.quad_pwr_fit_err = Some(lsq.two_parameter_line_fit(
             t,
             log_powers,
             &log_corrected_sigmas,
-            FitType::Quadratic,
+            PowerFitType::Quadratic,
         ));
     }
     Ok(())
 }
 
-/// passing
-pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+/// Fits the phase of ACF data.
+pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
         let phases = &range.phases.phases;
@@ -52,7 +56,7 @@ pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform acf phase fitting - dimension mismatch".to_string(),
             ))?
         }
@@ -61,8 +65,8 @@ pub fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-/// passing
-pub fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
+/// Fits the phase of XCF data.
+pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
     let lsq = LeastSquares::new(1, 1);
     for range in ranges {
         let phases = &range.elev.phases;
@@ -71,23 +75,22 @@ pub fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::Message(
+            Err(Fitacf3Error::BadFit(
                 "Cannot perform xcf phase fitting - dimension mismatch".to_string(),
             ))?
         }
-        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, FitType::Linear));
+        range.elev_fit = Some(lsq.two_parameter_line_fit(t, phases, sigmas, PowerFitType::Linear));
     }
     Ok(())
 }
 
-/// passing
-pub fn calculate_phase_and_elev_sigmas(
+/// Calculates standard deviations for phase and elevation fits.
+pub(crate) fn calculate_phase_and_elev_sigmas(
     ranges: &mut Vec<RangeNode>,
-    rec: &RawacfRecord,
+    rec: &Rawacf,
 ) -> Result<()> {
     for range in ranges {
         let inverse_alpha_2: Vec<f64> = range.phase_alpha_2.iter().map(|x| 1.0 / x).collect();
-        // let elevs_inverse_alpha_2: Vec<f64> = range.alpha_2.iter().map(|x| 1.0 / x).collect();
         let pwr_values: Vec<f64> = range
             .phases
             .t
@@ -98,14 +101,14 @@ pub fn calculate_phase_and_elev_sigmas(
         let phase_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
             .map(|(x, y)| x * y - 1.0)
             .collect();
-        let denominator = 2.0 * rec.num_averages as f64;
+        let denominator = 2.0 * rec.nave as f64;
         let mut phase_sigmas: Vec<f64> = phase_numerator
             .iter()
             .map(|x| (x / denominator).sqrt())
             .collect();
         if phase_sigmas.iter().filter(|&x| !x.is_finite()).count() > 0 {
-            Err(Fitacf3Error::Message(format!(
-                "Phase sigmas bad at range {}",
+            Err(Fitacf3Error::BadFit(format!(
+                "Phase sigmas infinite at range {}",
                 range.range_idx
             )))?
         }
@@ -117,8 +120,8 @@ pub fn calculate_phase_and_elev_sigmas(
     Ok(())
 }
 
-/// passing
-pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
+/// Applies 2π phase unwrapping to ACF phases.
+pub(crate) fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     for range in ranges {
         let (mut slope_numerator, mut slope_denominator) = (0.0, 0.0);
 
@@ -176,7 +179,7 @@ pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
             }
             let orig_slope_estimate = sum_xy / sum_xx;
             let mut orig_slope_error = 0.0;
-            for (p, (s, t)) in zip(new_phases.iter(), zip(sigmas.iter(), t.iter())) {
+            for (p, (s, t)) in zip(phases.iter(), zip(sigmas.iter(), t.iter())) {
                 if *s > 0.0 {
                     let temp = orig_slope_estimate * t - p;
                     orig_slope_error += temp * temp / (s * s);
@@ -189,8 +192,8 @@ pub fn acf_phase_unwrap(ranges: &mut Vec<RangeNode>) {
     }
 }
 
-/// passing
-pub fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
+/// Applies 2π phase unwrapping to XCF phases
+pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     for range in ranges {
         let (mut sum_xy, mut sum_xx) = (0.0, 0.0);
 
@@ -199,7 +202,7 @@ pub fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.elev.t;
 
         match range.phase_fit.as_ref() {
-            None => Err(Fitacf3Error::Message(
+            None => Err(Fitacf3Error::BadFit(
                 "Phase fit must be defined to unwrap XCF phase".to_string(),
             ))?,
             Some(fit) => {
@@ -219,17 +222,23 @@ pub fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
     Ok(())
 }
 
-/// passing
+/// Determines which points need a 2π phase correction applied
 fn phase_correction(slope_estimate: f64, phases: &[f64], times: &[f64]) -> (Vec<f64>, i32) {
     let phase_predicted: Vec<f64> = times.iter().map(|t| t * slope_estimate).collect();
 
-    // Round to 4 decimals places, so that 0.4999 rounds to 0.5, then up to 1.0
+    // Round to 5 decimals places, so that 0.49999 rounds to 0.5, then up to 1.0
     let phase_diff: Vec<i32> = zip(phases.iter(), phase_predicted.iter())
-        .map(|(p, pred)| ((((pred - p) / (2.0 * PI)) * 10000.0).round() / 10000.0).round() as i32)
+        .map(|(p, pred)| {
+            ((((pred - p) / (2.0 * PI)) * 100_000.0).round() / 100_000.0).round() as i32
+        })
         .collect();
     let corrected_phase: Vec<f64> = zip(phases.iter(), phase_diff.iter())
         .map(|(p, &corr)| p + corr as f64 * 2.0 * PI)
         .collect();
-    let total_corrections: i32 = phase_diff.iter().map(|x| x.abs()).sum();
+    let total_corrections: i32 = phase_diff
+        .iter()
+        .map(|x| x.abs())
+        .max()
+        .map_or_else(|| 0, |x| x);
     (corrected_phase, total_corrections)
 }
