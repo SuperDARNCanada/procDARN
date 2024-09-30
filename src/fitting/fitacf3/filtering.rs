@@ -1,86 +1,11 @@
 use crate::fitting::fitacf3::fitacf_v3::{
-    Fitacf3Error, ALPHA_CUTOFF, FLUCTUATION_CUTOFF_COEFFICIENT, MIN_LAGS,
+    ALPHA_CUTOFF, FLUCTUATION_CUTOFF_COEFFICIENT, MIN_LAGS,
 };
-use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
+use crate::fitting::common::fitstruct::{LagNode, RangeNode};
+use crate::fitting::common::error::FittingError;
 use crate::utils::rawacf::Rawacf;
 use is_close::is_close;
 
-/// Finds all samples that were collected during transmission of a pulse.
-pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
-    let mut pulses_in_us: Vec<i32> = rec
-        .ptab
-        .iter()
-        .map(|&p| i32::from(p) * i32::from(rec.mpinc))
-        .collect();
-
-    if rec.offset != 0 {
-        if rec.channel == 1 {
-            let pulses_stereo: Vec<i32> = pulses_in_us
-                .iter()
-                .map(|&p| p - i32::from(rec.offset))
-                .collect();
-            pulses_in_us.extend(pulses_stereo);
-        } else if rec.channel == 2 {
-            let pulses_stereo: Vec<i32> = pulses_in_us
-                .iter()
-                .map(|&p| p + i32::from(rec.offset))
-                .collect();
-            pulses_in_us.extend(pulses_stereo);
-        }
-    }
-    pulses_in_us.sort();
-
-    let mut ts = i32::from(rec.lagfr);
-    let mut t1;
-    let mut t2;
-    let mut sample = 0;
-    let mut bad_samples = vec![];
-
-    for pulse_us in pulses_in_us {
-        t1 = pulse_us - i32::from(rec.txpl) / 2;
-        t2 = t1 + 3 * i32::from(rec.txpl) / 2 + 100;
-
-        // Start incrementing the sample until we find a sample that lies within a pulse
-        while ts < t1 {
-            sample += 1;
-            ts += i32::from(rec.smsep);
-        }
-
-        // Blank all samples within the pulse duration
-        while (ts >= t1) && (ts <= t2) {
-            bad_samples.push(sample);
-            sample += 1;
-            ts += i32::from(rec.smsep);
-        }
-    }
-    bad_samples
-}
-
-/// Removes all lags that contain samples collected during transmission of a pulse.
-pub(crate) fn filter_tx_overlapped_lags(
-    rec: &Rawacf,
-    lags: &[LagNode],
-    ranges: &mut Vec<RangeNode>,
-) {
-    let bad_samples = mark_bad_samples(rec);
-    for range_node in ranges {
-        let mut bad_indices = vec![];
-        for (idx, lag) in lags.iter().enumerate() {
-            let sample_1 = lag.sample_base_1 + range_node.range_num as i32;
-            let sample_2 = lag.sample_base_2 + range_node.range_num as i32;
-            if bad_samples.contains(&sample_1) || bad_samples.contains(&sample_2) {
-                bad_indices.push(idx);
-            }
-        }
-        for i in bad_indices.iter().rev() {
-            range_node.powers.remove(*i);
-            range_node.phases.remove(*i);
-            range_node.elev.remove(*i);
-            range_node.power_alpha_2.remove(*i);
-            range_node.phase_alpha_2.remove(*i);
-        }
-    }
-}
 
 /// Removes all lags that have infinite power values.
 pub(crate) fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {
@@ -169,14 +94,14 @@ pub(crate) fn filter_bad_acfs(rec: &Rawacf, ranges: &mut Vec<RangeNode>, noise_p
 }
 
 /// Removes all ranges that have not had phase, lambda power, or quadratic power fitted
-pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3Error> {
+pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), FittingError> {
     let mut bad_indices = vec![];
     for (idx, range) in ranges.iter().enumerate() {
         if (range
             .phase_fit
             .as_ref()
             .ok_or_else(|| {
-                Fitacf3Error::BadFit("Cannot filter fits since phase not fit".to_string())
+                FittingError::BadFit("Cannot filter fits since phase not fit".to_string())
             })?
             .slope
             == 0.0)
@@ -184,7 +109,7 @@ pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3
                 .lin_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::BadFit(
+                    FittingError::BadFit(
                         "Cannot filter fits since power not linearly fit".to_string(),
                     )
                 })?
@@ -194,7 +119,7 @@ pub(crate) fn filter_bad_fits(ranges: &mut Vec<RangeNode>) -> Result<(), Fitacf3
                 .quad_pwr_fit
                 .as_ref()
                 .ok_or_else(|| {
-                    Fitacf3Error::BadFit(
+                    FittingError::BadFit(
                         "Cannot filter fits since power not quadratically fit".to_string(),
                     )
                 })?

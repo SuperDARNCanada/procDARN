@@ -1,4 +1,4 @@
-use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
+use crate::fitting::common::error::FittingError;
 use crate::utils::rawacf::Rawacf;
 use numpy::ndarray::prelude::*;
 use std::iter::zip;
@@ -20,6 +20,7 @@ pub(crate) struct RangeNode {
     pub quad_pwr_fit_err: Option<FittedData>,
     pub phase_fit: Option<FittedData>,
     pub elev_fit: Option<FittedData>,
+    pub self_clutter: Option<Vec<f64>>,
 }
 impl RangeNode {
     pub(crate) fn new(
@@ -27,7 +28,7 @@ impl RangeNode {
         range_num: usize,
         record: &Rawacf,
         lags: &[LagNode],
-    ) -> Result<RangeNode, Fitacf3Error> {
+    ) -> Result<RangeNode, FittingError> {
         let cross_range_interference =
             RangeNode::calculate_cross_range_interference(range_num, record);
         let alpha_2 =
@@ -51,6 +52,7 @@ impl RangeNode {
             quad_pwr_fit_err: None,
             phase_fit: None,
             elev_fit: None,
+            self_clutter: None,
         })
     }
     fn calculate_cross_range_interference(range_num: usize, rec: &Rawacf) -> Vec<f64> {
@@ -101,6 +103,8 @@ pub(crate) struct PhaseNode {
     pub phases: Vec<f64>,
     pub t: Vec<f64>,
     pub std_dev: Vec<f64>,
+    pub std_dev_real: Vec<f64>,
+    pub std_dev_imag: Vec<f64>,
 }
 impl PhaseNode {
     pub(crate) fn new(
@@ -108,12 +112,12 @@ impl PhaseNode {
         phase_type: &PhaseFitType,
         lags: &[LagNode],
         range_idx: usize,
-    ) -> Result<PhaseNode, Fitacf3Error> {
+    ) -> Result<PhaseNode, FittingError> {
         let acfd = match phase_type {
             PhaseFitType::Acf => &rec.acfd,
             PhaseFitType::Xcf => match &rec.xcfd {
                 Some(ref x) => x,
-                None => Err(Fitacf3Error::InvalidRawacf(
+                None => Err(FittingError::InvalidRawacf(
                     "Cannot find xcfs in data".to_string(),
                 ))?,
             },
@@ -133,12 +137,16 @@ impl PhaseNode {
             .map(|x| (x.lag_num * rec.mpinc as i32) as f64 * 1.0e-6)
             .collect();
         let std_dev = (0..rec.mplgs).map(|_| 0.0).collect();
-        Ok(PhaseNode { phases, t, std_dev })
+        let std_dev_real = std_dev.clone();
+        let std_dev_imag = std_dev.clone();
+        Ok(PhaseNode { phases, t, std_dev, std_dev_real, std_dev_imag })
     }
     pub fn remove(&mut self, idx: usize) {
         self.phases.remove(idx);
         self.t.remove(idx);
         self.std_dev.remove(idx);
+        self.std_dev_real.remove(idx);
+        self.std_dev_imag.remove(idx);
     }
 }
 
