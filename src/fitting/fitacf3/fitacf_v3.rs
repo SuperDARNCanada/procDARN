@@ -1,11 +1,11 @@
 //! Error type for Fitacfv3 algorithm
-use crate::fitting::fitacf3::determinations::determinations;
-use crate::fitting::common::preprocessing;
+use crate::fitting::common::error::FittingError;
 use crate::fitting::common::fitstruct::RangeNode;
+use crate::fitting::common::preprocessing;
+use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::{filtering, fitting};
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::{get_hdw, Rawacf};
-use crate::fitting::common::error::FittingError;
 use dmap::formats::{fitacf::FitacfRecord, rawacf::RawacfRecord};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -14,7 +14,6 @@ type Result<T> = std::result::Result<T, FittingError>;
 pub const FLUCTUATION_CUTOFF_COEFFICIENT: f32 = 2.0;
 pub const ALPHA_CUTOFF: f32 = 2.0;
 pub const MIN_LAGS: i16 = 3;
-
 
 /// Fits a single `RawacfRecord` into a `FitacfRecord`
 ///

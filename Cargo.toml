@@ -16,10 +16,7 @@ dmap = { git = "https://github.com/SuperDARNCanada/dmap.git", branch = "develop"
 rust-embed = "6.6.1"
 rayon = "1.7.0"
 thiserror = "1.0.64"
-# these are for lmfit2
-nalgebra = "0.33.0"
 rmpfit = "0.3.0"
-varpro = "0.10.0"
 
 [build-dependencies]
 git2 =  "0.17.1"

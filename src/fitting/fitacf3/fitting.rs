@@ -1,11 +1,11 @@
-use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
-use crate::fitting::fitacf3::fitstruct::{PowerFitType, RangeNode};
+use crate::fitting::common::error::FittingError;
+use crate::fitting::common::fitstruct::{PowerFitType, RangeNode};
 use crate::fitting::fitacf3::least_squares::LeastSquares;
 use crate::utils::rawacf::Rawacf;
 use std::f64::consts::PI;
 use std::iter::zip;
 
-type Result<T> = std::result::Result<T, Fitacf3Error>;
+type Result<T> = std::result::Result<T, FittingError>;
 
 /// Fits the power of ACF data.
 pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
@@ -17,7 +17,7 @@ pub(crate) fn acf_power_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.powers.t;
         let num_points = range.powers.ln_power.len();
         if t.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::BadFit(
+            Err(FittingError::BadFit(
                 "Cannot perform acf power fitting - dimension mismatch".to_string(),
             ))?;
         }
@@ -56,7 +56,7 @@ pub(crate) fn acf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::BadFit(
+            Err(FittingError::BadFit(
                 "Cannot perform acf phase fitting - dimension mismatch".to_string(),
             ))?;
         }
@@ -75,7 +75,7 @@ pub(crate) fn xcf_phase_fitting(ranges: &mut Vec<RangeNode>) -> Result<()> {
 
         let num_points = t.len();
         if phases.len() != num_points || sigmas.len() != num_points {
-            Err(Fitacf3Error::BadFit(
+            Err(FittingError::BadFit(
                 "Cannot perform xcf phase fitting - dimension mismatch".to_string(),
             ))?;
         }
@@ -107,7 +107,7 @@ pub(crate) fn calculate_phase_and_elev_sigmas(
             .map(|x| (x / denominator).sqrt())
             .collect();
         if phase_sigmas.iter().filter(|&x| !x.is_finite()).count() > 0 {
-            Err(Fitacf3Error::BadFit(format!(
+            Err(FittingError::BadFit(format!(
                 "Phase sigmas infinite at range {}",
                 range.range_idx
             )))?;
@@ -202,7 +202,7 @@ pub(crate) fn xcf_phase_unwrap(ranges: &mut Vec<RangeNode>) -> Result<()> {
         let t = &range.elev.t;
 
         match range.phase_fit.as_ref() {
-            None => Err(Fitacf3Error::BadFit(
+            None => Err(FittingError::BadFit(
                 "Phase fit must be defined to unwrap XCF phase".to_string(),
             ))?,
             Some(fit) => {

@@ -1,13 +1,16 @@
 //! Error type for Lmfitv2 algorithm
+use crate::fitting::common::error::FittingError;
 use crate::fitting::lmfit2::determinations::determinations;
-use crate::fitting::common::preprocessing;
-use crate::fitting::common::fitstruct::RangeNode;
+use crate::fitting::lmfit2::estimations::{
+    estimate_first_order_error, estimate_real_imag_error, estimate_self_clutter,
+};
+use crate::fitting::lmfit2::fitstruct::RangeNode;
+use crate::fitting::lmfit2::fitting::acf_fit;
+use crate::fitting::lmfit2::preprocessing;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::{get_hdw, Rawacf};
 use dmap::formats::{fitacf::FitacfRecord, rawacf::RawacfRecord};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use crate::fitting::common::error::FittingError;
-use crate::fitting::lmfit2::estimations::{estimate_first_order_error, estimate_real_imag_error, estimate_self_clutter};
 
 type Result<T> = std::result::Result<T, FittingError>;
 
@@ -41,10 +44,10 @@ fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecor
     //filtering::check_range_nodes(&mut range_list);
     estimate_self_clutter(&mut range_list, &raw);
     estimate_first_order_error(&mut range_list, &raw, noise_power as f64);
-    //acf_fit(&mut range_list, &raw);
+    acf_fit(&mut range_list, &raw);
     estimate_real_imag_error(&mut range_list, &raw, noise_power as f64)?;
-    //acf_fit(&mut range_list, &raw);
-    //xcf_fit(&mut range_list, &raw);
+    acf_fit(&mut range_list, &raw);
+    // xcf_fit(&mut range_list, &raw);
 
     determinations(&raw, &range_list, noise_power, hdw)
 }

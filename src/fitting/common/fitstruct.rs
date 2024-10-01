@@ -136,10 +136,16 @@ impl PhaseNode {
             .iter()
             .map(|x| (x.lag_num * rec.mpinc as i32) as f64 * 1.0e-6)
             .collect();
-        let std_dev = (0..rec.mplgs).map(|_| 0.0).collect();
+        let std_dev: Vec<f64> = (0..rec.mplgs).map(|_| 0.0).collect();
         let std_dev_real = std_dev.clone();
         let std_dev_imag = std_dev.clone();
-        Ok(PhaseNode { phases, t, std_dev, std_dev_real, std_dev_imag })
+        Ok(PhaseNode {
+            phases,
+            t,
+            std_dev,
+            std_dev_real,
+            std_dev_imag,
+        })
     }
     pub fn remove(&mut self, idx: usize) {
         self.phases.remove(idx);

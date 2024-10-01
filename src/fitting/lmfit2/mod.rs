@@ -1,5 +1,7 @@
 pub mod determinations;
-pub mod lmfit2;
+mod estimations;
+mod fitstruct;
 pub mod fitting;
 pub mod least_squares;
-mod estimations;
+pub mod lmfit2;
+mod preprocessing;

@@ -1,5 +1,5 @@
-use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
-use crate::fitting::fitacf3::fitstruct::RangeNode;
+use crate::fitting::common::error::FittingError;
+use crate::fitting::common::fitstruct::RangeNode;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use chrono::Utc;
@@ -24,7 +24,7 @@ pub(crate) fn determinations(
     ranges: &[RangeNode],
     noise_power: f32,
     hdw: &HdwInfo,
-) -> Result<FitacfRecord, Fitacf3Error> {
+) -> Result<FitacfRecord, FittingError> {
     let range_list: Vec<i16> = ranges.iter().map(|r| r.range_num as i16).collect();
     let lag_0_power_db: Array1<f32> = rec
         .pwr0
@@ -400,7 +400,7 @@ pub(crate) fn determinations(
         );
     }
     let new_rec = FitacfRecord::new(&mut fit_rec).map_err(|e| {
-        Fitacf3Error::BadFit(format!(
+        FittingError::BadFit(format!(
             "Could not create valid Fitacf record from results: {e}"
         ))
     })?;

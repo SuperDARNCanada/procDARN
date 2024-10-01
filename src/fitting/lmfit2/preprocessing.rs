@@ -1,4 +1,4 @@
-use crate::fitting::common::fitstruct::{LagNode, RangeNode};
+use crate::fitting::lmfit2::fitstruct::{LagNode, RangeNode};
 use crate::utils::rawacf::Rawacf;
 use std::f64::consts::PI;
 
@@ -154,11 +154,11 @@ pub(crate) fn remove_tx_overlapped_lags(
             }
         }
         for i in bad_indices.iter().rev() {
-            range_node.powers.remove(*i);
-            range_node.phases.remove(*i);
-            range_node.elev.remove(*i);
-            range_node.power_alpha_2.remove(*i);
-            range_node.phase_alpha_2.remove(*i);
+            range_node.acf_real.remove(*i);
+            range_node.acf_imag.remove(*i);
+            range_node.t.remove(*i);
+            range_node.sigma_real.remove(*i);
+            range_node.sigma_imag.remove(*i);
         }
     }
 }

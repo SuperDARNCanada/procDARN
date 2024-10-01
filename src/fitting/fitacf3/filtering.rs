@@ -1,11 +1,8 @@
-use crate::fitting::fitacf3::fitacf_v3::{
-    ALPHA_CUTOFF, FLUCTUATION_CUTOFF_COEFFICIENT, MIN_LAGS,
-};
-use crate::fitting::common::fitstruct::{LagNode, RangeNode};
 use crate::fitting::common::error::FittingError;
+use crate::fitting::common::fitstruct::RangeNode;
+use crate::fitting::fitacf3::fitacf_v3::{ALPHA_CUTOFF, FLUCTUATION_CUTOFF_COEFFICIENT, MIN_LAGS};
 use crate::utils::rawacf::Rawacf;
 use is_close::is_close;
-
 
 /// Removes all lags that have infinite power values.
 pub(crate) fn filter_infinite_lags(ranges: &mut Vec<RangeNode>) {

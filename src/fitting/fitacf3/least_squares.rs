@@ -1,4 +1,4 @@
-use crate::fitting::fitacf3::fitstruct::{FittedData, PowerFitType, Sums};
+use crate::fitting::common::fitstruct::{FittedData, PowerFitType, Sums};
 
 #[derive(Debug)]
 pub(crate) struct LeastSquares {

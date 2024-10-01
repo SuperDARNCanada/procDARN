@@ -1,8 +1,8 @@
+use crate::error::ProcdarnError;
 use dmap::error::DmapError;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyErr;
 use thiserror::Error;
-use crate::error::ProcdarnError;
 
 /// Enum of the possible error variants that may be encountered
 #[derive(Error, Debug)]
@@ -21,7 +21,7 @@ pub enum FittingError {
 
     /// Invalid DMAP file
     #[error("{0}")]
-    Dmap(#[from] DmapError)
+    Dmap(#[from] DmapError),
 }
 
 impl From<FittingError> for PyErr {
