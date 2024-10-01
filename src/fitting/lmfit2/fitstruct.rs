@@ -8,8 +8,8 @@ pub(crate) struct RangeNode {
     pub range_num: u16,
     pub range_idx: usize,
     pub t: Vec<f64>,
-    pub acf_real: Vec<f64>,
-    pub acf_imag: Vec<f64>,
+    pub acf_real: Vec<f32>,
+    pub acf_imag: Vec<f32>,
     pub sigma_real: Option<Vec<f64>>,
     pub sigma_imag: Option<Vec<f64>>,
     pub lin_fit: Option<FittedData>,
@@ -31,8 +31,8 @@ impl RangeNode {
                 .iter()
                 .map(|x| (x.lag_num * record.mpinc as i32) as f64 * US_TO_S_f64)
                 .collect(),
-            acf_real: record.acfd.slice(s![index, .., 0]).collect(),
-            acf_imag: record.acfd.slice(s![index, .., 1]).collect(),
+            acf_real: record.acfd.slice(s![index, .., 0]).clone().into_iter().map(|x| *x).collect(),
+            acf_imag: record.acfd.slice(s![index, .., 1]).clone().into_iter().map(|x| *x).collect(),
             sigma_real: None,
             sigma_imag: None,
             lin_fit: None,

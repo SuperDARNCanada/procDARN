@@ -9,10 +9,11 @@ use std::f64::consts::PI;
 pub const NUM_VEL_MODELS: u32 = 30;
 const CONFIDENCE: i32 = 1;
 
-pub(crate) fn acf_fit(range_list: &mut Vec<RangeNode>, raw: &Rawacf) {
+pub(crate) fn acf_fit(range_list: &mut Vec<RangeNode>, raw: &Rawacf) -> Result<(), FittingError> {
     for range in range_list {
         range.lin_fit = Some(lmfit(range, raw)?);
     }
+    Ok(())
 }
 
 fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, FittingError> {
@@ -22,29 +23,31 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
     let delta_chi: i32 = CONFIDENCE * CONFIDENCE;
 
     // independent variable for our data
-    let t: Vec<f64> = range_node.t.clone().extend(range_node.t.clone()).collect(); // repeat since data goes real then imaginary
-    let y: Vec<f64> = range_node
-        .acf_real
-        .clone()
-        .extend(range_node.acf_imag.clone())
-        .collect();
-    let ye: Vec<f64> =
+    let t: Vec<f64> = [range_node.t.clone(), range_node.t.clone()].concat(); // repeat since data goes real then imaginary
+    let real_acf: Vec<f64> = range_node.acf_real.iter().map(|&x| x as f64).collect();
+    let imag_acf: Vec<f64> = range_node.acf_imag.iter().map(|&x| x as f64).collect();
+    let y: Vec<f64> = [real_acf, imag_acf].concat();
+    let ye: Vec<f64> = [
         range_node
             .sigma_real
             .as_ref()
             .ok_or_else(|| FittingError::BadFit("Cannot fit without error estimate".to_string()))?
-            .extend(range_node.sigma_imag.as_ref().ok_or_else(|| {
-                FittingError::BadFit("Cannot fit without error estimate".to_string())
-            })?)
-            .collect();
+            .clone(),
+        range_node
+            .sigma_imag
+            .as_ref()
+            .ok_or_else(|| FittingError::BadFit("Cannot fit without error estimate".to_string()))?
+            .clone(),
+    ]
+    .concat();
 
-    let mut problem = LevMarProblem {
-        x: t,
+    let mut problem = LevMarProblem::new(
+        t,
         y,
         ye,
         wavelength,
         nyquist_vel,
-    };
+    );
 
     let mut fit: FittedData = FittedData::default();
     fit.chi_squared = 10e200; // arbitrary large number
@@ -57,9 +60,11 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
     let mut velocity_err: Vec<f64> = vec![];
 
     for i in 0..NUM_VEL_MODELS {
-        let mut params: &[f64] =
-            &mut *vec![10_000.0, 200.0, -nyquist_vel / 2.0 + i as f64 * vel_step];
-        let result = problem.mpfit(&mut params)?;
+        let mut params =
+            vec![10_000.0, 200.0, -nyquist_vel / 2.0 + i as f64 * vel_step];
+        let result = problem
+            .mpfit(&mut params)
+            .map_err(|e| FittingError::BadFit(format!("Error with MPFit: {e}")))?;
 
         chi_squared.push(result.best_norm);
         powers.push(params[0]);
@@ -80,7 +85,7 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
         }
     }
 
-    for i in 0..NUM_VEL_MODELS {
+    for i in 0..NUM_VEL_MODELS as usize {
         if chi_squared[i] <= fit.chi_squared + delta_chi as f64 {
             if fit.sigma_2_pwr < (fit.pwr - powers[i]).abs() {
                 fit.sigma_2_pwr = (fit.pwr - powers[i]).abs()
@@ -93,10 +98,11 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
             }
         }
     }
-    fit
+    Ok(fit)
 }
 
 /// Levenberg-Marquardt solver using the rmpfit crate
+#[derive(Default)]
 pub(crate) struct LevMarProblem {
     /// Independent variable of the ACF data
     x: Vec<f64>,
@@ -112,15 +118,59 @@ pub(crate) struct LevMarProblem {
 
     /// The upper limit on observable velocity given by the sampling rate
     nyquist_vel: f64,
+
+    /// The actual parameters being optimized
+    params: Vec<MPPar>
 }
 
+impl LevMarProblem {
+    pub fn new(
+        t: Vec<f64>,
+        y: Vec<f64>,
+        ye: Vec<f64>,
+        wavelength: f64,
+        nyquist_vel: f64,
+    ) -> LevMarProblem {
+        let mut params: Vec<MPPar> = vec![];
+
+        let mut pwr_param = MPPar {
+            limited_low: true,
+            limit_low: 0.0,
+            ..Default::default()
+        };
+        params.push(pwr_param);
+
+        let mut wid_param = MPPar {
+            limited_low: true,
+            limit_low: -100.0,
+            ..Default::default()
+        };
+        params.push(wid_param);
+
+        let mut vel_param = MPPar {
+            limited_low: true,
+            limit_low: -nyquist_vel / 2.0,
+            limited_up: true,
+            limit_up: nyquist_vel / 2.0,
+            ..Default::default()
+        };
+        params.push(vel_param);
+
+        LevMarProblem {x: t, y, ye, wavelength, nyquist_vel, params}
+    }
+}
 impl MPFitter for LevMarProblem {
     fn eval(&mut self, params: &[f64], deviates: &mut [f64]) -> MPResult<()> {
-        let exponential = (-2.0 * PI * params[1] * &self.x / self.wavelength).exp();
+        let exponential: Vec<f64> = self
+            .x
+            .iter()
+            .map(|x| (-2.0 * PI * params[1] * x / self.wavelength).exp())
+            .collect();
         let coeff = 4.0 * PI * params[2] / self.wavelength;
 
+        let num_points = deviates.len();
         for (i, dev) in enumerate(deviates.iter_mut()) {
-            if i < deviates.len() / 2 {
+            if i < num_points / 2 {
                 *dev = (self.y[i] - params[0] * exponential[i] * (coeff * self.x[i]).cos())
                     / self.ye[i];
             } else {
@@ -128,6 +178,7 @@ impl MPFitter for LevMarProblem {
                     / self.ye[i]
             }
         }
+        Ok(())
     }
 
     fn number_of_points(&self) -> usize {
@@ -135,30 +186,16 @@ impl MPFitter for LevMarProblem {
     }
 
     fn config(&self) -> MPConfig {
-        let mut default_config = MPConfig::default();
-        default_config.ftol = 0.0001;
-        default_config.gtol = 0.0001;
-        default_config.no_finite_check = false;
-        default_config.max_fev = 200;
-
-        default_config
+        MPConfig {
+            ftol: 0.0001,
+            gtol: 0.0001,
+            no_finite_check: false,
+            max_fev: 200,
+            ..Default::default()
+        }
     }
 
     fn parameters(&self) -> Option<&[MPPar]> {
-        let mut pwr_param = MPPar::default();
-        pwr_param.limited_low = true;
-        pwr_param.limit_low = 0.0;
-
-        let mut wid_param = MPPar::default();
-        wid_param.limited_low = true;
-        wid_param.limit_low = -100.0;
-
-        let mut vel_param = MPPar::default();
-        vel_param.limited_low = true;
-        vel_param.limit_low = -self.nyquist_vel / 2.0;
-        vel_param.limited_up = true;
-        vel_param.limit_up = self.nyquist_vel / 2.0;
-
-        Some(&[pwr_param, wid_param, vel_param])
+        Some(&*self.params)
     }
 }

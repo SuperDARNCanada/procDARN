@@ -144,7 +144,7 @@ pub(crate) fn remove_tx_overlapped_lags(
     ranges: &mut Vec<RangeNode>,
 ) {
     let bad_samples = mark_bad_samples(rec);
-    for range_node in ranges {
+    for range_node in ranges.iter_mut() {
         let mut bad_indices = vec![];
         for (idx, lag) in lags.iter().enumerate() {
             let sample_1 = lag.sample_base_1 + range_node.range_num as i32;
@@ -157,8 +157,12 @@ pub(crate) fn remove_tx_overlapped_lags(
             range_node.acf_real.remove(*i);
             range_node.acf_imag.remove(*i);
             range_node.t.remove(*i);
-            range_node.sigma_real.remove(*i);
-            range_node.sigma_imag.remove(*i);
+            if let Some(ref mut x) = range_node.sigma_real {
+                x.remove(*i);
+            }
+            if let Some(ref mut x) = range_node.sigma_imag {
+                x.remove(*i);
+            }
         }
     }
 }

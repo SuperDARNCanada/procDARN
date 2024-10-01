@@ -1,7 +1,6 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::lmfit2::fitstruct::RangeNode;
 use crate::utils::rawacf::Rawacf;
-use itertools::enumerate;
 use numpy::ndarray::Array1;
 use std::f64::consts::PI;
 use std::iter::zip;
@@ -31,9 +30,9 @@ fn estimate_maximum_self_clutter(
 
     let bad_range = rawacf.nrang;
     let mut self_clutter: Vec<f64> = vec![];
-    let mut r1 = Array1::ones(rawacf.mppul) * -1000;
+    let mut r1: Array1<i16> = Array1::ones(rawacf.mppul as usize) * -1000;
     let mut r2 = r1.clone();
-    for lag in 0..rawacf.mplgs as usize{
+    for lag in 0..rawacf.mplgs as usize {
         self_clutter.push(0.0);
 
         let sample_1 = pulse_width * rawacf.ltab[[lag, 0]] + range_gate as i16 + first_range_sample;
@@ -72,16 +71,19 @@ fn estimate_maximum_self_clutter(
         for pulse in 0..rawacf.mppul as usize {
             // First term in the summation for the self-clutter estimate (P_r*P_j^*)
             if r2[pulse] != -1000 {
-                term1 += (lag0_power[range_gate] * lag0_power[r2[pulse]]).sqrt() as f64;
+                term1 += (lag0_power[range_gate as usize] * lag0_power[r2[pulse] as usize]).sqrt()
+                    as f64;
             }
             // Second term in the summation for the self-clutter estimate (P_i*P_r^*)
             if r1[pulse] != -1000 {
-                term2 += (lag0_power[range_gate] * lag0_power[r1[pulse]]).sqrt() as f64;
+                term2 += (lag0_power[range_gate as usize] * lag0_power[r1[pulse] as usize]).sqrt()
+                    as f64;
             }
-            for pulse2 in 0..rawacf.mppul {
+            for pulse2 in 0..rawacf.mppul as usize {
                 // Third term in the summation for the self-clutter estimate (P_i*P_j^*)
                 if (r1[pulse] != -1000) && (r2[pulse2] != -1000) {
-                    term3 += (lag0_power[r1[pulse]] * lag0_power[r2[pulse2]]).sqrt() as f64;
+                    term3 += (lag0_power[r1[pulse] as usize] * lag0_power[r2[pulse2] as usize])
+                        .sqrt() as f64;
                 }
             }
         }
@@ -143,7 +145,7 @@ pub(crate) fn estimate_real_imag_error(
 
         if let Some(clutter) = &range.self_clutter {
             for (sc, t) in zip(clutter.iter(), range.t.iter()) {
-                let mut rho = (-2.0_f64 * PI * *t / wavelength).exp();
+                let mut rho = (-2.0_f64 * PI * width * t / wavelength).exp();
 
                 if rho > 0.999 {
                     rho = 0.999;

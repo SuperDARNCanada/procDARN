@@ -44,9 +44,9 @@ fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecor
     //filtering::check_range_nodes(&mut range_list);
     estimate_self_clutter(&mut range_list, &raw);
     estimate_first_order_error(&mut range_list, &raw, noise_power as f64);
-    acf_fit(&mut range_list, &raw);
+    acf_fit(&mut range_list, &raw)?;
     estimate_real_imag_error(&mut range_list, &raw, noise_power as f64)?;
-    acf_fit(&mut range_list, &raw);
+    acf_fit(&mut range_list, &raw)?;
     // xcf_fit(&mut range_list, &raw);
 
     determinations(&raw, &range_list, noise_power, hdw)
