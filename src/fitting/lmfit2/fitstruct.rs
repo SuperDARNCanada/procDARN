@@ -1,13 +1,13 @@
 use crate::fitting::common::error::FittingError;
-use crate::utils::constants::US_TO_S_f64;
+use crate::utils::constants::US_TO_S;
 use crate::utils::rawacf::Rawacf;
 use numpy::ndarray::prelude::*;
 
 #[derive(Debug)]
 pub(crate) struct RangeNode {
     pub range_num: u16,
-    pub range_idx: usize,
     pub t: Vec<f64>,
+    pub lags: Vec<usize>,
     pub acf_real: Vec<f32>,
     pub acf_imag: Vec<f32>,
     pub sigma_real: Option<Vec<f64>>,
@@ -25,14 +25,24 @@ impl RangeNode {
         lags: &[LagNode],
     ) -> Result<RangeNode, FittingError> {
         Ok(RangeNode {
-            range_idx: index,
             range_num: range_num as u16,
             t: lags
                 .iter()
-                .map(|x| (x.lag_num * record.mpinc as i32) as f64 * US_TO_S_f64)
+                .map(|x| (x.lag_num * record.mpinc as i32) as f64 * US_TO_S as f64)
                 .collect(),
-            acf_real: record.acfd.slice(s![index, .., 0]).clone().into_iter().map(|x| *x).collect(),
-            acf_imag: record.acfd.slice(s![index, .., 1]).clone().into_iter().map(|x| *x).collect(),
+            lags: (0..lags.len()).collect(),
+            acf_real: record
+                .acfd
+                .slice(s![index, .., 0])
+                .iter()
+                .copied()
+                .collect(),
+            acf_imag: record
+                .acfd
+                .slice(s![index, .., 1])
+                .iter()
+                .copied()
+                .collect(),
             sigma_real: None,
             sigma_imag: None,
             lin_fit: None,

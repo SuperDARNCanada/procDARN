@@ -11,6 +11,7 @@ pub(crate) struct Rawacf {
     // Scalar fields
     pub radar_revision_major: i8,
     pub radar_revision_minor: i8,
+    pub origin_code: i8,
     pub origin_command: String,
     pub cp: i16,
     pub stid: i16,
@@ -87,6 +88,7 @@ impl TryFrom<&RawacfRecord> for Rawacf {
         Ok(Rawacf {
             radar_revision_major: scalar_getter("radar.revision.major")?.clone().try_into()?,
             radar_revision_minor: scalar_getter("radar.revision.minor")?.clone().try_into()?,
+            origin_code: scalar_getter("origin.code")?.clone().try_into()?,
             origin_command: scalar_getter("origin.command")?.clone().try_into()?,
             cp: scalar_getter("cp")?.clone().try_into()?,
             stid: scalar_getter("stid")?.clone().try_into()?,

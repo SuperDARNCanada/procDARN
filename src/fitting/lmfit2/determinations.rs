@@ -1,6 +1,6 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::lmfit2::fitstruct::RangeNode;
-use crate::utils::constants::{KHZ_TO_HZ_f32, LIGHTSPEED_f32, US_TO_S_f32};
+use crate::utils::constants::{KHZ_TO_HZ, LIGHTSPEED, US_TO_S};
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use chrono::Utc;
@@ -11,9 +11,9 @@ use numpy::ndarray::{Array, Array1};
 use std::f32::consts::PI as PI_f32;
 use std::iter::zip;
 
-pub const FITACF_REVISION_MAJOR: i32 = 2;
+pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
-pub const ORIGIN_CODE: i8 = 1;
+pub const ORIGIN_CODE: i8 = 100;
 pub const V_MAX: f32 = 30.0;
 pub const W_MAX: f32 = 90.0;
 
@@ -46,7 +46,7 @@ pub(crate) fn determinations(
         "radar.revision.minor".to_string(),
         rec.radar_revision_minor.into(),
     );
-    fit_rec.insert("origin.code".to_string(), ORIGIN_CODE.into());
+    fit_rec.insert("origin.code".to_string(), rec.origin_code.into());
     let now: chrono::DateTime<Utc> = std::time::SystemTime::now().into();
     fit_rec.insert(
         "origin.time".to_string(),
@@ -97,7 +97,7 @@ pub(crate) fn determinations(
     fit_rec.insert("combf".to_string(), rec.combf.clone().into());
     fit_rec.insert("ptab".to_string(), rec.ptab.clone().into_dyn().into());
     fit_rec.insert("ltab".to_string(), rec.ltab.clone().into_dyn().into());
-    fit_rec.insert("algorithm".to_string(), "fitacf3".to_string().into());
+    fit_rec.insert("algorithm".to_string(), "".to_string().into());
     fit_rec.insert("tdiff".to_string(), hdw.tdiff_a.into());
     fit_rec.insert(
         "fitacf.revision.major".to_string(),
@@ -112,7 +112,7 @@ pub(crate) fn determinations(
     if let Some(x) = rec.ifmode {
         fit_rec.insert("ifmode".to_string(), x.into());
     } else {
-        fit_rec.insert("ifmode".to_string(), <DmapField as From<i16>>::from(-1));
+        fit_rec.insert("ifmode".to_string(), <DmapField as From<i16>>::from(0));
     }
     if let Some(x) = rec.mplgexs {
         fit_rec.insert("mplgexs".to_string(), x.into());
@@ -135,7 +135,6 @@ pub(crate) fn determinations(
                     .expect("Unable to make fitacf without linear fitted power")
                     .pwr as f32)
                     .log10()
-                    / 10.0_f32.ln()
                     - noise_db
             })
             .collect();
@@ -150,29 +149,29 @@ pub(crate) fn determinations(
                     / (10.0_f32.ln() * r.lin_fit.as_ref().unwrap().pwr as f32)
             })
             .collect();
-        let power_quadratic: Vec<f32> = ranges
-            .iter()
-            .map(|r| {
-                10.0 * (r
-                    .quad_fit
-                    .as_ref()
-                    .expect("Unable to make fitacf without quadratic fitted power")
-                    .pwr as f32)
-                    .log10()
-                    - noise_db
-            })
-            .collect();
-        let power_quadratic_error: Vec<f32> = ranges
-            .iter()
-            .map(|r| {
-                (r.quad_fit
-                    .as_ref()
-                    .expect("Unable to make fitacf without quadratic fitted power error")
-                    .sigma_2_pwr as f32)
-                    .sqrt()
-                    / (10.0_f32.ln() * r.quad_fit.as_ref().unwrap().pwr as f32)
-            })
-            .collect();
+        // let power_quadratic: Vec<f32> = ranges
+        //     .iter()
+        //     .map(|r| {
+        //         10.0 * (r
+        //             .quad_fit
+        //             .as_ref()
+        //             .expect("Unable to make fitacf without quadratic fitted power")
+        //             .pwr as f32)
+        //             .log10()
+        //             - noise_db
+        //     })
+        //     .collect();
+        // let power_quadratic_error: Vec<f32> = ranges
+        //     .iter()
+        //     .map(|r| {
+        //         (r.quad_fit
+        //             .as_ref()
+        //             .expect("Unable to make fitacf without quadratic fitted power error")
+        //             .sigma_2_pwr as f32)
+        //             .sqrt()
+        //             / (10.0_f32.ln() * r.quad_fit.as_ref().unwrap().pwr as f32)
+        //     })
+        //     .collect();
         let velocity: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -211,22 +210,22 @@ pub(crate) fn determinations(
                     .sqrt() as f32
             })
             .collect();
-        let spectral_width_quadratic: Vec<f32> = ranges
-            .iter()
-            .map(|r| {
-                r.quad_fit
-                    .as_ref()
-                    .expect("Unable to make fitacf quadratic spectral width without fitted power")
-                    .wid as f32
-            })
-            .collect();
-        let spectral_width_quadratic_error: Vec<f32> = ranges
-            .iter()
-            .map(|r| {
-                (r.quad_fit.as_ref().expect("Unable to make fitacf quadratic spectral width error without fitted power error")
-                    .sigma_2_wid as f32).sqrt()
-            })
-            .collect();
+        // let spectral_width_quadratic: Vec<f32> = ranges
+        //     .iter()
+        //     .map(|r| {
+        //         r.quad_fit
+        //             .as_ref()
+        //             .expect("Unable to make fitacf quadratic spectral width without fitted power")
+        //             .wid as f32
+        //     })
+        //     .collect();
+        // let spectral_width_quadratic_error: Vec<f32> = ranges
+        //     .iter()
+        //     .map(|r| {
+        //         (r.quad_fit.as_ref().expect("Unable to make fitacf quadratic spectral width error without fitted power error")
+        //             .sigma_2_wid as f32).sqrt()
+        //     })
+        //     .collect();
         let std_dev_linear: Vec<f32> = ranges
             .iter()
             .map(|r| {
@@ -236,15 +235,15 @@ pub(crate) fn determinations(
                     .chi_squared as f32
             })
             .collect();
-        let std_dev_quadratic: Vec<f32> = ranges
-            .iter()
-            .map(|r| {
-                r.quad_fit
-                    .as_ref()
-                    .expect("Unable to make fitacf quadratic std deviation without fitted power")
-                    .chi_squared as f32
-            })
-            .collect();
+        // let std_dev_quadratic: Vec<f32> = ranges
+        //     .iter()
+        //     .map(|r| {
+        //         r.quad_fit
+        //             .as_ref()
+        //             .expect("Unable to make fitacf quadratic std deviation without fitted power")
+        //             .chi_squared as f32
+        //     })
+        //     .collect();
         let std_dev_phi: Vec<f32> = ranges
             .iter()
             .map(|_| {
@@ -309,14 +308,14 @@ pub(crate) fn determinations(
             "p_l_e".to_string(),
             Array::from_vec(power_linear_error).into_dyn().into(),
         );
-        fit_rec.insert(
-            "p_s".to_string(),
-            Array::from_vec(power_quadratic).into_dyn().into(),
-        );
-        fit_rec.insert(
-            "p_s_e".to_string(),
-            Array::from_vec(power_quadratic_error).into_dyn().into(),
-        );
+        // fit_rec.insert(
+        //     "p_s".to_string(),
+        //     Array::from_vec(power_quadratic).into_dyn().into(),
+        // );
+        // fit_rec.insert(
+        //     "p_s_e".to_string(),
+        //     Array::from_vec(power_quadratic_error).into_dyn().into(),
+        // );
         fit_rec.insert("v".to_string(), Array::from_vec(velocity).into_dyn().into());
         fit_rec.insert(
             "v_e".to_string(),
@@ -332,24 +331,24 @@ pub(crate) fn determinations(
                 .into_dyn()
                 .into(),
         );
-        fit_rec.insert(
-            "w_s".to_string(),
-            Array::from_vec(spectral_width_quadratic).into_dyn().into(),
-        );
-        fit_rec.insert(
-            "w_s_e".to_string(),
-            Array::from_vec(spectral_width_quadratic_error)
-                .into_dyn()
-                .into(),
-        );
+        // fit_rec.insert(
+        //     "w_s".to_string(),
+        //     Array::from_vec(spectral_width_quadratic).into_dyn().into(),
+        // );
+        // fit_rec.insert(
+        //     "w_s_e".to_string(),
+        //     Array::from_vec(spectral_width_quadratic_error)
+        //         .into_dyn()
+        //         .into(),
+        // );
         fit_rec.insert(
             "sd_l".to_string(),
             Array::from_vec(std_dev_linear).into_dyn().into(),
         );
-        fit_rec.insert(
-            "sd_s".to_string(),
-            Array::from_vec(std_dev_quadratic).into_dyn().into(),
-        );
+        // fit_rec.insert(
+        //     "sd_s".to_string(),
+        //     Array::from_vec(std_dev_quadratic).into_dyn().into(),
+        // );
         fit_rec.insert(
             "sd_phi".to_string(),
             Array::from_vec(std_dev_phi).into_dyn().into(),
@@ -414,8 +413,8 @@ fn calculate_elevation(
     let phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
         .to_radians()
         .cos(); // todo: Add in beam offset
-    let wave_num = 2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ_f32 / LIGHTSPEED_f32;
-    let cable_offset = -2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ_f32 * hdw.tdiff_a * US_TO_S_f32;
+    let wave_num = 2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ / LIGHTSPEED;
+    let cable_offset = -2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S;
     let phase_diff_max = phi_sign * wave_num * array_separation * phi_0 + cable_offset;
     let mut psi: Vec<f32> = ranges
         .iter()

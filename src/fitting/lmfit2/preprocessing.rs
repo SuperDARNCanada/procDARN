@@ -55,7 +55,8 @@ pub(crate) fn acf_cutoff_power(rec: &Rawacf) -> f32 {
     if j <= 0.0 {
         j = 1.0;
     }
-    min_power *= cutoff_power_correction(rec) / j;
+    // min_power *= cutoff_power_correction(rec) / j;
+    min_power /= j;
     let search_noise = rec.noise_search;
     if min_power < ACF_SNR_CUTOFF && search_noise != 0.0 {
         min_power = search_noise as f64;
@@ -138,11 +139,7 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
 }
 
 /// Removes all lags that contain samples collected during transmission of a pulse.
-pub(crate) fn remove_tx_overlapped_lags(
-    rec: &Rawacf,
-    lags: &[LagNode],
-    ranges: &mut Vec<RangeNode>,
-) {
+pub(crate) fn remove_tx_overlapped_lags(rec: &Rawacf, lags: &[LagNode], ranges: &mut [RangeNode]) {
     let bad_samples = mark_bad_samples(rec);
     for range_node in ranges.iter_mut() {
         let mut bad_indices = vec![];
@@ -157,10 +154,14 @@ pub(crate) fn remove_tx_overlapped_lags(
             range_node.acf_real.remove(*i);
             range_node.acf_imag.remove(*i);
             range_node.t.remove(*i);
+            range_node.lags.remove(*i);
             if let Some(ref mut x) = range_node.sigma_real {
                 x.remove(*i);
             }
             if let Some(ref mut x) = range_node.sigma_imag {
+                x.remove(*i);
+            }
+            if let Some(ref mut x) = range_node.self_clutter {
                 x.remove(*i);
             }
         }

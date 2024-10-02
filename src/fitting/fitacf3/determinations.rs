@@ -1,5 +1,6 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::common::fitstruct::RangeNode;
+use crate::utils::constants::{KHZ_TO_HZ, LIGHTSPEED, US_TO_S};
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use chrono::Utc;
@@ -12,9 +13,6 @@ use std::iter::zip;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
 pub const FITACF_REVISION_MINOR: i32 = 0;
-const LIGHTSPEED: f32 = 299_792_458.0;
-const KHZ_TO_HZ: f32 = 1000.0;
-const US_TO_S: f32 = 1e-6;
 pub const ORIGIN_CODE: i8 = 1;
 pub const V_MAX: f32 = 30.0;
 pub const W_MAX: f32 = 90.0;

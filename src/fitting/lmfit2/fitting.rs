@@ -1,6 +1,6 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::lmfit2::fitstruct::{FittedData, RangeNode};
-use crate::utils::constants::{LIGHTSPEED_f64, US_TO_S_f64};
+use crate::utils::constants::{KHZ_TO_HZ, LIGHTSPEED, US_TO_S};
 use crate::utils::rawacf::Rawacf;
 use itertools::enumerate;
 use rmpfit::{MPConfig, MPFitter, MPPar, MPResult};
@@ -17,8 +17,8 @@ pub(crate) fn acf_fit(range_list: &mut Vec<RangeNode>, raw: &Rawacf) -> Result<(
 }
 
 fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, FittingError> {
-    let wavelength: f64 = LIGHTSPEED_f64 / raw.tfreq as f64;
-    let nyquist_vel: f64 = wavelength / (4.0 * raw.mpinc as f64 * US_TO_S_f64);
+    let wavelength: f64 = LIGHTSPEED as f64 / (raw.tfreq as f64 * KHZ_TO_HZ as f64);
+    let nyquist_vel: f64 = wavelength / (4.0 * raw.mpinc as f64 * US_TO_S as f64);
     let vel_step: f64 = (nyquist_vel + 1.0) / (NUM_VEL_MODELS as f64 - 1.0);
     let delta_chi: i32 = CONFIDENCE * CONFIDENCE;
 
@@ -41,16 +41,13 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
     ]
     .concat();
 
-    let mut problem = LevMarProblem::new(
-        t,
-        y,
-        ye,
-        wavelength,
-        nyquist_vel,
-    );
+    let mut problem = LevMarProblem::new(t, y, ye, wavelength, nyquist_vel);
 
-    let mut fit: FittedData = FittedData::default();
-    fit.chi_squared = 10e200; // arbitrary large number
+    // arbitrary large number for initial chi_squared
+    let mut fit: FittedData = FittedData {
+        chi_squared: 10e200,
+        ..Default::default()
+    };
     let mut chi_squared: Vec<f64> = vec![];
     let mut powers: Vec<f64> = vec![];
     let mut widths: Vec<f64> = vec![];
@@ -60,8 +57,7 @@ fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, Fitting
     let mut velocity_err: Vec<f64> = vec![];
 
     for i in 0..NUM_VEL_MODELS {
-        let mut params =
-            vec![10_000.0, 200.0, -nyquist_vel / 2.0 + i as f64 * vel_step];
+        let mut params = vec![10_000.0, 200.0, -nyquist_vel / 2.0 + i as f64 * vel_step];
         let result = problem
             .mpfit(&mut params)
             .map_err(|e| FittingError::BadFit(format!("Error with MPFit: {e}")))?;
@@ -116,11 +112,8 @@ pub(crate) struct LevMarProblem {
     /// The radio wavelength
     wavelength: f64,
 
-    /// The upper limit on observable velocity given by the sampling rate
-    nyquist_vel: f64,
-
     /// The actual parameters being optimized
-    params: Vec<MPPar>
+    params: Vec<MPPar>,
 }
 
 impl LevMarProblem {
@@ -133,21 +126,21 @@ impl LevMarProblem {
     ) -> LevMarProblem {
         let mut params: Vec<MPPar> = vec![];
 
-        let mut pwr_param = MPPar {
+        let pwr_param = MPPar {
             limited_low: true,
             limit_low: 0.0,
             ..Default::default()
         };
         params.push(pwr_param);
 
-        let mut wid_param = MPPar {
+        let wid_param = MPPar {
             limited_low: true,
             limit_low: -100.0,
             ..Default::default()
         };
         params.push(wid_param);
 
-        let mut vel_param = MPPar {
+        let vel_param = MPPar {
             limited_low: true,
             limit_low: -nyquist_vel / 2.0,
             limited_up: true,
@@ -156,7 +149,13 @@ impl LevMarProblem {
         };
         params.push(vel_param);
 
-        LevMarProblem {x: t, y, ye, wavelength, nyquist_vel, params}
+        LevMarProblem {
+            x: t,
+            y,
+            ye,
+            wavelength,
+            params,
+        }
     }
 }
 impl MPFitter for LevMarProblem {

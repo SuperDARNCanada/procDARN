@@ -1,27 +1,25 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::lmfit2::fitstruct::RangeNode;
+use crate::utils::constants::{KHZ_TO_HZ, LIGHTSPEED};
 use crate::utils::rawacf::Rawacf;
 use numpy::ndarray::Array1;
 use std::f64::consts::PI;
 use std::iter::zip;
 
-const LIGHTSPEED: f64 = 299_792_458.0;
-const KHZ_TO_HZ: f64 = 1000.0;
-
 /// Estimate the self clutter for each range gate, from each sample in each lag
 pub(crate) fn estimate_self_clutter(range_list: &mut Vec<RangeNode>, rawacf: &Rawacf) {
     for range in range_list {
         range.self_clutter = Some(estimate_maximum_self_clutter(
-            range.range_num,
+            range,
             rawacf,
             &rawacf.pwr0,
         ));
     }
 }
 
-/// Maximal lag0 Power Based Self-Clutter Estimator
+/// Maximal lag0 power-based Self-Clutter Estimator
 fn estimate_maximum_self_clutter(
-    range_gate: u16,
+    range: &RangeNode,
     rawacf: &Rawacf,
     lag0_power: &Array1<f32>,
 ) -> Vec<f64> {
@@ -33,10 +31,9 @@ fn estimate_maximum_self_clutter(
     let mut r1: Array1<i16> = Array1::ones(rawacf.mppul as usize) * -1000;
     let mut r2 = r1.clone();
     for lag in 0..rawacf.mplgs as usize {
-        self_clutter.push(0.0);
 
-        let sample_1 = pulse_width * rawacf.ltab[[lag, 0]] + range_gate as i16 + first_range_sample;
-        let sample_2 = pulse_width * rawacf.ltab[[lag, 1]] + range_gate as i16 + first_range_sample;
+        let sample_1 = pulse_width * rawacf.ltab[[lag, 0]] + range.range_num as i16 + first_range_sample;
+        let sample_2 = pulse_width * rawacf.ltab[[lag, 1]] + range.range_num as i16 + first_range_sample;
 
         for pulse in 0..rawacf.mppul as usize {
             // Find the pulses that were transmitted before the samples were recorded,
@@ -45,7 +42,7 @@ fn estimate_maximum_self_clutter(
                 let temp = sample_1 - rawacf.ptab[pulse] * pulse_width - first_range_sample;
                 // Also we need to check and make sure we only save interfering range
                 // gates where we have valid lag0 power
-                if (temp != range_gate as i16)
+                if (temp != range.range_num as i16)
                     && (temp >= 0)
                     && (temp < rawacf.nrang)
                     && (temp < bad_range)
@@ -56,7 +53,7 @@ fn estimate_maximum_self_clutter(
             // Do the same for the second sample comprising the lag
             if rawacf.ptab[pulse] * pulse_width <= sample_2 {
                 let temp = sample_2 - rawacf.ptab[pulse] * pulse_width - first_range_sample;
-                if (temp != range_gate as i16)
+                if (temp != range.range_num as i16)
                     && (temp >= 0)
                     && (temp < rawacf.nrang)
                     && (temp < bad_range)
@@ -71,12 +68,12 @@ fn estimate_maximum_self_clutter(
         for pulse in 0..rawacf.mppul as usize {
             // First term in the summation for the self-clutter estimate (P_r*P_j^*)
             if r2[pulse] != -1000 {
-                term1 += (lag0_power[range_gate as usize] * lag0_power[r2[pulse] as usize]).sqrt()
+                term1 += (lag0_power[range.range_num as usize] * lag0_power[r2[pulse] as usize]).sqrt()
                     as f64;
             }
             // Second term in the summation for the self-clutter estimate (P_i*P_r^*)
             if r1[pulse] != -1000 {
-                term2 += (lag0_power[range_gate as usize] * lag0_power[r1[pulse] as usize]).sqrt()
+                term2 += (lag0_power[range.range_num as usize] * lag0_power[r1[pulse] as usize]).sqrt()
                     as f64;
             }
             for pulse2 in 0..rawacf.mppul as usize {
@@ -117,11 +114,11 @@ pub(crate) fn estimate_first_order_error(
 
 /// Estimate the error for real and imaginary components of each lag at each range
 pub(crate) fn estimate_real_imag_error(
-    range_list: &mut Vec<RangeNode>,
+    range_list: &mut [RangeNode],
     rawacf: &Rawacf,
     noise_power: f64,
 ) -> Result<(), FittingError> {
-    let wavelength: f64 = LIGHTSPEED / (rawacf.tfreq as f64 * KHZ_TO_HZ);
+    let wavelength: f64 = LIGHTSPEED as f64 / (rawacf.tfreq as f64 * KHZ_TO_HZ as f64);
 
     for range in range_list.iter_mut() {
         let power = range

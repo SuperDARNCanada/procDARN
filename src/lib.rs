@@ -1,5 +1,6 @@
 use crate::fitting::common::error::FittingError;
 use crate::fitting::fitacf3::fitacf_v3::par_fitacf3;
+use crate::fitting::lmfit2::lmfit2::par_lmfit2;
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::dmap::Record;
@@ -7,10 +8,9 @@ use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
 use itertools::{Either, Itertools};
-use pyo3::prelude::{PyAnyMethods, PyModule, PyModuleMethods};
+use pyo3::prelude::{PyAnyMethods, PyModule};
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, PyErr, PyResult, Python};
 use std::path::PathBuf;
-use crate::fitting::lmfit2::lmfit2::par_lmfit2;
 
 pub mod error;
 pub mod fitting;
@@ -90,7 +90,6 @@ fn fitacf3_cli(py: Python) -> PyResult<()> {
     Ok(())
 }
 
-
 /// Fits a list of RAWACF records into FITACF records using the LMFITv2 algorithm.
 #[pyfunction]
 #[pyo3(name = "lmfit2")]
@@ -131,7 +130,7 @@ fn file_lmfit2(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), FittingError>
 #[pyo3(name = "file_lmfit2")]
 #[pyo3(text_signature = "(rawacf_file: str, fitacf_file: str, /)")]
 fn file_lmfit2_py(raw_file: PathBuf, fit_file: PathBuf) -> PyResult<()> {
-    crate::file_fitacf3(raw_file, fit_file)?;
+    file_lmfit2(raw_file, fit_file)?;
     Ok(())
 }
 
