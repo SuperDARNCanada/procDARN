@@ -19,7 +19,7 @@ pub(crate) fn acf_fit(range_list: &mut Vec<RangeNode>, raw: &Rawacf) -> Result<(
 fn lmfit(range_node: &mut RangeNode, raw: &Rawacf) -> Result<FittedData, FittingError> {
     let wavelength: f64 = LIGHTSPEED as f64 / (raw.tfreq as f64 * KHZ_TO_HZ as f64);
     let nyquist_vel: f64 = wavelength / (4.0 * raw.mpinc as f64 * US_TO_S as f64);
-    let vel_step: f64 = (nyquist_vel + 1.0) / (NUM_VEL_MODELS as f64 - 1.0);
+    let vel_step: f64 = (nyquist_vel - 1.0) / (NUM_VEL_MODELS as f64 - 1.0);
     let delta_chi: i32 = CONFIDENCE * CONFIDENCE;
 
     // independent variable for our data
