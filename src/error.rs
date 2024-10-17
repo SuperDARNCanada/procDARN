@@ -1,21 +1,14 @@
-use std::fmt;
-use std::fmt::Formatter;
+use crate::utils::hdw::HdwError;
+use dmap::error::DmapError;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub struct BackscatterError {
-    pub details: String,
-}
+#[derive(Error, Debug)]
+pub enum ProcdarnError {
+    /// Represents a bad DMAP record
+    #[error("{0}")]
+    Dmap(#[from] DmapError),
 
-impl fmt::Display for BackscatterError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.details)
-    }
-}
-
-impl BackscatterError {
-    pub fn new(details: &str) -> BackscatterError {
-        BackscatterError {
-            details: details.to_string(),
-        }
-    }
+    /// Unable to get hdw file information
+    #[error("{0}")]
+    Hdw(#[from] HdwError),
 }
