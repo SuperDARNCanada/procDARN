@@ -6,12 +6,12 @@ use crate::fitting::fitacf3::fitstruct::{LagNode, RangeNode};
 use crate::fitting::fitacf3::fitting;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::{get_hdw, Rawacf};
+use dmap::error::DmapError;
 use dmap::formats::{fitacf::FitacfRecord, rawacf::RawacfRecord};
 use pyo3::exceptions::PyValueError;
 use pyo3::PyErr;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::f64::consts::PI;
-use dmap::error::DmapError;
 use thiserror::Error;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
@@ -38,7 +38,7 @@ pub enum Fitacf3Error {
 
     /// Invalid DMAP file
     #[error("{0}")]
-    Dmap(#[from] DmapError)
+    Dmap(#[from] DmapError),
 }
 
 impl From<Fitacf3Error> for PyErr {

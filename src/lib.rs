@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use crate::fitting::fitacf3::fitacf_v3::{Fitacf3Error, par_fitacf3};
+use crate::fitting::fitacf3::fitacf_v3::{par_fitacf3, Fitacf3Error};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::dmap::Record;
@@ -7,8 +6,9 @@ use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
 use itertools::{Either, Itertools};
-use pyo3::prelude::{PyAnyMethods, PyModule};
+use pyo3::prelude::{PyAnyMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, PyErr, PyResult, Python};
+use std::path::PathBuf;
 
 pub mod error;
 pub mod fitting;
@@ -42,10 +42,7 @@ fn fitacf3_py(
 }
 
 /// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
-fn file_fitacf3(
-    raw_file: PathBuf,
-    fit_file: PathBuf
-) -> Result<(), Fitacf3Error> {
+fn file_fitacf3(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error> {
     let rawacf_records = dmap::read_rawacf(raw_file)?;
     let fitacf_records = par_fitacf3(rawacf_records)?;
     dmap::write_fitacf(fitacf_records, &fit_file)?;
@@ -56,10 +53,7 @@ fn file_fitacf3(
 #[pyfunction]
 #[pyo3(name = "file_fitacf3")]
 #[pyo3(text_signature = "(rawacf_file: str, fitacf_file: str, /)")]
-fn file_fitacf3_py(
-    raw_file: PathBuf,
-    fit_file: PathBuf
-) -> PyResult<()> {
+fn file_fitacf3_py(raw_file: PathBuf, fit_file: PathBuf) -> PyResult<()> {
     file_fitacf3(raw_file, fit_file)?;
     Ok(())
 }

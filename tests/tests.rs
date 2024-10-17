@@ -1,6 +1,6 @@
 use assert_unordered::assert_eq_unordered;
 use dmap::types::{DmapField, DmapVec};
-use ndarray::Array;
+use itertools::enumerate;
 use procdarn::fitting::fitacf3::fitacf_v3::fitacf3;
 use std::iter::zip;
 
@@ -15,24 +15,28 @@ fn test_fitacf3() {
     let rst_records = dmap::read_fitacf("tests/test_files/test.fitacf".to_string().into())
         .expect("Could not read test.fitacf records");
     let variable_fields = vec!["origin.time", "origin.command"];
-    for (test_rec, rst_rec) in zip(fitacf_records.iter(), rst_records.iter()) {
+    for (i, (test_rec, rst_rec)) in enumerate(zip(fitacf_records.iter(), rst_records.iter())) {
         assert_eq_unordered!(test_rec.keys(), rst_rec.keys());
         for k in test_rec.keys() {
             if variable_fields.contains(&&**k) {
             } else {
                 match test_rec.get(k) {
                     Some(DmapField::Vector(DmapVec::Float(x))) => {
-                        assert!(rst_rec.get(k).is_some(), "Testing {k}");
+                        assert!(rst_rec.get(k).is_some(), "Testing rec {i} {k}");
                         if let Some(DmapField::Vector(DmapVec::Float(y))) = rst_rec.get(k) {
                             assert!(
-                                Array::<f32, _>::zeros(x.raw_dim())
-                                    .abs_diff_eq(&((x - y) / x), 1e-5),
-                                "Testing {k}\nleft: {x:?}\nright: {y:?}",
-                            )
+                                x.map(|v| if v.is_nan() { -1_000_000.0 } else { *v })
+                                    .relative_eq(
+                                        &y.map(|v| if v.is_nan() { -1_000_000.0 } else { *v }),
+                                        1e-5,
+                                        1e-5
+                                    ),
+                                "Testing rec {i} {k}: left == right\nleft: {x}\nright: {y}"
+                            );
                         }
                     }
                     Some(_) => {
-                        assert_eq!(test_rec.get(k), rst_rec.get(k), "Testing {k}")
+                        assert_eq!(test_rec.get(k), rst_rec.get(k), "Testing rec {i} {k}")
                     }
                     None => {}
                 }
