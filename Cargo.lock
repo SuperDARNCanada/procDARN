@@ -414,8 +414,8 @@ dependencies = [
 
 [[package]]
 name = "dmap"
-version = "0.1.5"
-source = "git+https://github.com/SuperDARNCanada/dmap.git?branch=develop#17a5a64adee479e5b85a11fdc258c7123a6002ff"
+version = "0.1.6"
+source = "git+https://github.com/SuperDARNCanada/dmap.git?tag=v0.1.6#50e1041b14aea8301c5e1b75482972367e9b3874"
 dependencies = [
  "bzip2",
  "indexmap 2.6.0",
