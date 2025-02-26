@@ -8,6 +8,7 @@ use dmap::types::DmapField;
 use indexmap::IndexMap;
 use numpy::ndarray::{Array, Array1};
 use std::f32::consts::PI as PI_f32;
+use std::f64::consts::PI as PI_f64;
 use std::iter::zip;
 
 pub const FITACF_REVISION_MAJOR: i32 = 3;
@@ -114,7 +115,7 @@ pub(crate) fn determinations(
     if let Some(x) = rec.ifmode {
         fit_rec.insert("ifmode".to_string(), x.into());
     } else {
-        fit_rec.insert("ifmode".to_string(), <DmapField as From<i16>>::from(-1));
+        fit_rec.insert("ifmode".to_string(), <DmapField as From<i16>>::from(0));
     }
     if let Some(x) = rec.mplgexs {
         fit_rec.insert("mplgexs".to_string(), x.into());
@@ -302,8 +303,9 @@ pub(crate) fn determinations(
                     .chi_squared as f32
             })
             .collect();
-        let (elevation_phi0, elevation_intercept_error, elevation_intercept) =
-            calculate_elevation(ranges, rec, &xcf_phi0, hdw);
+        let (elevation_phi0, elevation_intercept) =
+            calculate_elevation_v2(ranges, rec, &xcf_phi0, hdw);
+        let (_, elevation_intercept_error, _) = calculate_elevation(ranges, rec, &xcf_phi0, hdw);
 
         fit_rec.insert(
             "slist".to_string(),
@@ -417,13 +419,13 @@ fn calculate_elevation(
     xcf_phi0: &[f32],
     hdw: &HdwInfo,
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    let x = hdw.intf_offset_x;
-    let y = hdw.intf_offset_y;
-    let z = hdw.intf_offset_z;
+    let x = hdw.intf_offset_x as f64;
+    let y = hdw.intf_offset_y as f64;
+    let z = hdw.intf_offset_z as f64;
 
-    let array_separation: f32 = (x * x + y * y + z * z).sqrt();
+    let array_separation: f64 = (x * x + y * y + z * z).sqrt();
     let mut elevation_corr = (z / array_separation).asin();
-    let phi_sign: f32;
+    let phi_sign: f64;
     if y > 0.0 {
         phi_sign = 1.0;
     } else {
@@ -431,86 +433,88 @@ fn calculate_elevation(
         elevation_corr *= -1.0;
     }
     let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
-    let phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
+    let cos_phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
         .to_radians()
-        .cos(); // todo: Add in beam offset
-    let wave_num = 2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ / LIGHTSPEED;
-    let cable_offset = -2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S;
-    let phase_diff_max = phi_sign * wave_num * array_separation * phi_0 + cable_offset;
-    let mut psi: Vec<f32> = ranges
+        .cos() as f64; // todo: Add in beam offset
+    let wave_num = 2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 / LIGHTSPEED as f64;
+    let cable_offset = -2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 * (hdw.tdiff_a * US_TO_S) as f64;
+    let phase_diff_max = phi_sign * wave_num * array_separation * cos_phi_0 + cable_offset;
+
+
+    let mut psi: Vec<f64> = ranges
         .iter()
         .map(|r| {
-            let x = r
+            let a = r
                 .elev_fit
                 .as_ref()
                 .expect("Unable to find elevation without fitted elevation")
-                .intercept as f32;
-            let mut y = x + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor();
+                .intercept;
+            let mut psi_raw = a + 2.0 * PI_f64 * ((phase_diff_max - a) / (2.0 * PI_f64)).floor();
             if phi_sign < 0.0 {
-                y += 2.0 * PI_f32;
+                psi_raw += 2.0 * PI_f64;
             }
-            y - cable_offset
+            psi_raw - cable_offset
         })
         .collect();
-    let mut psi_kd: Vec<f32> = psi
+    let mut psi_kd: Vec<f64> = psi
         .iter()
         .map(|p| p / (wave_num * array_separation))
         .collect();
-    let mut theta: Vec<f32> = psi_kd.iter().map(|p| phi_0 * phi_0 - p * p).collect();
+    let mut theta: Vec<f64> = psi_kd.iter().map(|p| cos_phi_0 * cos_phi_0 - p * p).collect();
     let elevation_intercept: Vec<f32> = theta
         .iter()
         .map(|&t| {
             if t < 0.0 || t.abs() > 1.0 {
-                -elevation_corr.to_degrees()
+                -elevation_corr.to_degrees() as f32
             } else {
-                t.sqrt().asin().to_degrees()
+                t.sqrt().asin().to_degrees() as f32
             }
         })
         .collect();
-    let psi_k2d2: Vec<f32> = psi
+    let psi_k2d2: Vec<f64> = psi
         .iter()
         .map(|p| p / (wave_num * wave_num * array_separation * array_separation))
         .collect();
-    let df_by_dy: Vec<f32> = zip(psi_k2d2.iter(), theta.iter())
-        .map(|(p, t)| p / (t * (1.0 - t)).sqrt())
+    let df_by_dy: Vec<f64> = zip(psi_k2d2.iter(), theta.iter())
+        .map(|(p, t)| p / (t - t*t).sqrt())
         .collect();
-    let errors: Vec<f32> = ranges
+    let errors: Vec<f64> = ranges
         .iter()
         .map(|r| {
             r.elev_fit
                 .as_ref()
                 .expect("Unable to calculate elevation errors")
-                .variance_intercept as f32
+                .variance_intercept
         })
         .collect();
     let elevation_intercept_error: Vec<f32> = zip(errors.iter(), df_by_dy.iter())
-        .map(|(e, d)| (e.sqrt() * d.abs()).to_degrees())
+        .map(|(e, d)| (e.sqrt() * d.abs()).to_degrees() as f32)
         .collect();
 
     // This time, use the xcf lag0 phase
     psi = xcf_phi0
         .iter()
-        .map(|&x| {
-            let mut y =
-                x + 2.0 * PI_f32 * ((phase_diff_max - x) / (2.0 * PI_f32)).floor() - cable_offset;
+        .map(|&p| {
+            let mut ps =
+                p as f64 + 2.0 * PI_f64 * ((phase_diff_max - p as f64) / (2.0 * PI_f64)).floor() - cable_offset;
             if phi_sign < 0.0 {
-                y += 2.0 * PI_f32;
+                ps += 2.0 * PI_f64;
             }
-            y
+            ps
         })
         .collect();
     psi_kd = psi
         .iter()
         .map(|p| p / (wave_num * array_separation))
         .collect();
-    theta = psi_kd.iter().map(|p| phi_0 * phi_0 - p * p).collect();
+    theta = psi_kd.iter().map(|p| cos_phi_0 * cos_phi_0 - p * p).collect();
     let elevation_phi0: Vec<f32> = theta
         .iter()
         .map(|&t| {
             if t < 0.0 || t.abs() > 1.0 {
-                -elevation_corr.to_degrees()
+                -elevation_corr.to_degrees() as f32
             } else {
-                (t + elevation_corr).sqrt().asin().to_degrees()
+                (t + elevation_corr).sqrt().asin().to_degrees() as f32
             }
         })
         .collect();
@@ -519,4 +523,98 @@ fn calculate_elevation(
         elevation_intercept_error,
         elevation_intercept,
     )
+}
+
+fn calculate_elevation_v2(
+    ranges: &[RangeNode],
+    rec: &Rawacf,
+    xcf_phi0: &[f32],
+    hdw: &HdwInfo,
+) -> (Vec<f32>, Vec<f32>) {
+    let x = hdw.intf_offset_x;
+    let y = hdw.intf_offset_y;
+    let z = hdw.intf_offset_z;
+
+    let psi_sign: f32 = if y > 0.0 { 1.0 } else { -1.0 };
+
+    let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
+    let phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset)).to_radians();
+    let cos_phi_0 = phi_0.cos(); // cp0
+    let sin_phi_0 = phi_0.sin(); // sp0
+
+    let wave_num = 2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ / LIGHTSPEED;
+    let cable_offset_rad = -2.0 * PI_f32 * rec.tfreq * KHZ_TO_HZ * hdw.tdiff_a * US_TO_S; // psi_ele
+
+    let mut elv_of_max_psi = (psi_sign * z * cos_phi_0 / (y * y + z * z).sqrt()).asin(); // a0
+    if elv_of_max_psi < 0. {
+        elv_of_max_psi = 0.0;
+    }
+
+    let cos_elv_of_max_psi = elv_of_max_psi.cos(); // ca0
+    let sin_elv_of_max_psi = elv_of_max_psi.sin(); // sa0
+
+    let psi_max = cable_offset_rad
+        + wave_num
+            * (x * sin_phi_0
+                + y * (cos_elv_of_max_psi * cos_elv_of_max_psi - sin_phi_0 * sin_phi_0).sqrt()
+                + z * sin_elv_of_max_psi);
+
+    let num_phase_jump_func = {
+        if y > 0.0 {
+            f64::floor
+        } else {
+            f64::ceil
+        }
+    };
+    let psi_calc = |p: &f32| -> f64 {
+        let delta_psi = (psi_max - p) as f64;
+        (p + 0.) as f64 + 2.0 * PI_f64 * num_phase_jump_func(delta_psi / (2.0 * PI_f64))
+    };
+    let e_calc = |p: &f64| -> f64 {
+        (p / (2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64) + (hdw.tdiff_a * US_TO_S) as f64) * LIGHTSPEED as f64 - (x * sin_phi_0) as f64
+    };
+    let elv_calc = |e: &f64| -> f32 {
+        (e * z as f64
+            + (e * e * (z * z) as f64
+            - ((y * y) as f64 + (z * z) as f64) * (e * e - (y * y) as f64 * (cos_phi_0 * cos_phi_0) as f64))
+            .sqrt()
+            / ((y * y) as f64 + (z * z) as f64))
+            .asin()
+            .to_degrees() as f32
+    };
+
+    let psi_normal: Vec<f64> = xcf_phi0
+        .iter()
+        .map(|p| psi_calc(p))
+        .collect();
+    let e_normal: Vec<f64> = psi_normal
+        .iter()
+        .map(|psi| e_calc(psi))
+        .collect();
+    let elv_normal = e_normal // called alpha in RST
+        .iter()
+        .map(|e| elv_calc(e))
+        .collect();
+
+    let psi_fitted: Vec<f64> = ranges
+        .iter()
+        .map(|r| {
+            let p = r
+                .elev_fit
+                .as_ref()
+                .expect("Unable to find elevation without fitted elevation")
+                .intercept as f32 * hdw.phase_sign;
+            psi_calc(&p)
+        })
+        .collect();
+    let e_fitted: Vec<f64> = psi_fitted
+        .iter()
+        .map(|psi| e_calc(psi))
+        .collect();
+    let elv_fitted = e_fitted
+        .iter()
+        .map(|e| elv_calc(e))
+        .collect();
+
+    (elv_normal, elv_fitted)
 }

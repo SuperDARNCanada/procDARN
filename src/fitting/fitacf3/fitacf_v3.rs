@@ -180,7 +180,7 @@ fn acf_cutoff_power(rec: &Rawacf) -> f32 {
     }
     min_power *= cutoff_power_correction(rec) / j;
     let search_noise = rec.noise_search;
-    if min_power < ACF_SNR_CUTOFF && search_noise > 0.0 {
+    if min_power < ACF_SNR_CUTOFF && search_noise != 0.0 {
         min_power = search_noise as f64;
     }
     min_power as f32
@@ -198,7 +198,7 @@ fn cutoff_power_correction(rec: &Rawacf) -> f64 {
         // Normalized power for calculating model PDF (Gaussian)
         normalized_power = i / 1000.0;
         let x = -(normalized_power - 1.0) * (normalized_power - 1.0) / (2.0 * std_dev * std_dev);
-        let pdf = x.exp() / std_dev / (2.0 * PI).sqrt() / 1000.0;
+        let pdf = x.exp() / (std_dev * (2.0 * PI).sqrt() * 1000.0);
         cumulative_pdf += pdf;
 
         // Cumulative value of PDF * x  -> needed for calculating the mean

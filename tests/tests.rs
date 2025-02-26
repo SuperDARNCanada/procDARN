@@ -31,7 +31,9 @@ fn test_fitacf3() {
                                         1e-5,
                                         1e-5
                                     ),
-                                "Testing rec {i} {k}: left == right\nleft: {x}\nright: {y}"
+                                "Testing rec {i} {k}: left == right\n\nleft: {x}\n\nright: {y}\n\nDiff: {}\n\nslist: {:?}",
+                                (x - y) / x,
+                                test_rec.get(&"slist".to_string())
                             );
                         }
                     }
