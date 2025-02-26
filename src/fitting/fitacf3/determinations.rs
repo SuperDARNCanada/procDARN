@@ -437,9 +437,9 @@ fn calculate_elevation(
         .to_radians()
         .cos() as f64; // todo: Add in beam offset
     let wave_num = 2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 / LIGHTSPEED as f64;
-    let cable_offset = -2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 * (hdw.tdiff_a * US_TO_S) as f64;
+    let cable_offset =
+        -2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 * (hdw.tdiff_a * US_TO_S) as f64;
     let phase_diff_max = phi_sign * wave_num * array_separation * cos_phi_0 + cable_offset;
-
 
     let mut psi: Vec<f64> = ranges
         .iter()
@@ -460,7 +460,10 @@ fn calculate_elevation(
         .iter()
         .map(|p| p / (wave_num * array_separation))
         .collect();
-    let mut theta: Vec<f64> = psi_kd.iter().map(|p| cos_phi_0 * cos_phi_0 - p * p).collect();
+    let mut theta: Vec<f64> = psi_kd
+        .iter()
+        .map(|p| cos_phi_0 * cos_phi_0 - p * p)
+        .collect();
     let elevation_intercept: Vec<f32> = theta
         .iter()
         .map(|&t| {
@@ -476,7 +479,7 @@ fn calculate_elevation(
         .map(|p| p / (wave_num * wave_num * array_separation * array_separation))
         .collect();
     let df_by_dy: Vec<f64> = zip(psi_k2d2.iter(), theta.iter())
-        .map(|(p, t)| p / (t - t*t).sqrt())
+        .map(|(p, t)| p / (t - t * t).sqrt())
         .collect();
     let errors: Vec<f64> = ranges
         .iter()
@@ -495,8 +498,9 @@ fn calculate_elevation(
     psi = xcf_phi0
         .iter()
         .map(|&p| {
-            let mut ps =
-                p as f64 + 2.0 * PI_f64 * ((phase_diff_max - p as f64) / (2.0 * PI_f64)).floor() - cable_offset;
+            let mut ps = p as f64
+                + 2.0 * PI_f64 * ((phase_diff_max - p as f64) / (2.0 * PI_f64)).floor()
+                - cable_offset;
             if phi_sign < 0.0 {
                 ps += 2.0 * PI_f64;
             }
@@ -507,7 +511,10 @@ fn calculate_elevation(
         .iter()
         .map(|p| p / (wave_num * array_separation))
         .collect();
-    theta = psi_kd.iter().map(|p| cos_phi_0 * cos_phi_0 - p * p).collect();
+    theta = psi_kd
+        .iter()
+        .map(|p| cos_phi_0 * cos_phi_0 - p * p)
+        .collect();
     let elevation_phi0: Vec<f32> = theta
         .iter()
         .map(|&t| {
@@ -571,26 +578,23 @@ fn calculate_elevation_v2(
         (p + 0.) as f64 + 2.0 * PI_f64 * num_phase_jump_func(delta_psi / (2.0 * PI_f64))
     };
     let e_calc = |p: &f64| -> f64 {
-        (p / (2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64) + (hdw.tdiff_a * US_TO_S) as f64) * LIGHTSPEED as f64 - (x * sin_phi_0) as f64
+        (p / (2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64) + (hdw.tdiff_a * US_TO_S) as f64)
+            * LIGHTSPEED as f64
+            - (x * sin_phi_0) as f64
     };
     let elv_calc = |e: &f64| -> f32 {
         (e * z as f64
             + (e * e * (z * z) as f64
-            - ((y * y) as f64 + (z * z) as f64) * (e * e - (y * y) as f64 * (cos_phi_0 * cos_phi_0) as f64))
-            .sqrt()
-            / ((y * y) as f64 + (z * z) as f64))
+                - ((y * y) as f64 + (z * z) as f64)
+                    * (e * e - (y * y) as f64 * (cos_phi_0 * cos_phi_0) as f64))
+                .sqrt()
+                / ((y * y) as f64 + (z * z) as f64))
             .asin()
             .to_degrees() as f32
     };
 
-    let psi_normal: Vec<f64> = xcf_phi0
-        .iter()
-        .map(|p| psi_calc(p))
-        .collect();
-    let e_normal: Vec<f64> = psi_normal
-        .iter()
-        .map(|psi| e_calc(psi))
-        .collect();
+    let psi_normal: Vec<f64> = xcf_phi0.iter().map(|p| psi_calc(p)).collect();
+    let e_normal: Vec<f64> = psi_normal.iter().map(|psi| e_calc(psi)).collect();
     let elv_normal = e_normal // called alpha in RST
         .iter()
         .map(|e| elv_calc(e))
@@ -603,18 +607,13 @@ fn calculate_elevation_v2(
                 .elev_fit
                 .as_ref()
                 .expect("Unable to find elevation without fitted elevation")
-                .intercept as f32 * hdw.phase_sign;
+                .intercept as f32
+                * hdw.phase_sign;
             psi_calc(&p)
         })
         .collect();
-    let e_fitted: Vec<f64> = psi_fitted
-        .iter()
-        .map(|psi| e_calc(psi))
-        .collect();
-    let elv_fitted = e_fitted
-        .iter()
-        .map(|e| elv_calc(e))
-        .collect();
+    let e_fitted: Vec<f64> = psi_fitted.iter().map(|psi| e_calc(psi)).collect();
+    let elv_fitted = e_fitted.iter().map(|e| elv_calc(e)).collect();
 
     (elv_normal, elv_fitted)
 }
