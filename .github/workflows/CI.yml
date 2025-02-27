@@ -49,8 +49,8 @@ jobs:
           args: --release --out dist --zig
           sccache: 'false'
           manylinux: auto
-#          before-script-linux: |
-#            sudo apt update -y && sudo apt-get install -y pkg-config libssl-dev openssl
+          before-script-linux: |
+            sudo apt update -y && sudo apt-get install -y pkg-config libssl-dev openssl
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -97,8 +97,8 @@ jobs:
         platform:
           - runner: windows-latest
             target: x64
-          - runner: windows-latest
-            target: x86
+#          - runner: windows-latest
+#            target: x86
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
