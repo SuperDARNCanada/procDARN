@@ -50,7 +50,7 @@ jobs:
           sccache: 'false'
           manylinux: auto
           before-script-linux: |
-            apt update -y && apt-get install -y libssl-dev openssl pkg-config
+            sudo apt update -y && apt-get install -y libssl-dev openssl pkg-config
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
