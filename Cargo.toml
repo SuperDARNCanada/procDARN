@@ -20,6 +20,7 @@ thiserror = "1.0.64"
 
 [build-dependencies]
 git2 =  "0.17.1"
+openssl = { version = "0.10.64", features = ["vendored"] }
 
 [dev-dependencies]
 approx = "0.5.1"

@@ -433,9 +433,9 @@ fn calculate_elevation(
         elevation_corr *= -1.0;
     }
     let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
-    let cos_phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
+    let cos_phi_0 = (hdw.boresight_shift + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
         .to_radians()
-        .cos() as f64; // todo: Add in beam offset
+        .cos() as f64;
     let wave_num = 2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 / LIGHTSPEED as f64;
     let cable_offset =
         -2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 * (hdw.tdiff_a * US_TO_S) as f64;
@@ -545,7 +545,7 @@ fn calculate_elevation_v2(
     let psi_sign: f32 = if y > 0.0 { 1.0 } else { -1.0 };
 
     let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
-    let phi_0 = (hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset)).to_radians();
+    let phi_0 = (hdw.boresight_shift + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset)).to_radians();
     let cos_phi_0 = phi_0.cos(); // cp0
     let sin_phi_0 = phi_0.sin(); // sp0
 
