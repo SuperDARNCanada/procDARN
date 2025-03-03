@@ -1,10 +1,11 @@
-use crate::error::BackscatterError;
+use crate::error::ProcdarnError;
 use crate::gridding::grid_table::GridTable;
 use crate::utils::rpos::slant_range;
 use chrono::NaiveDate;
-use dmap::formats::FitacfRecord;
+use dmap::error::DmapError;
+use dmap::formats::fitacf::FitacfRecord;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct RadarCell {
     pub groundscatter: i32,            // gsct in RST
     pub power_lag_zero: f64,           // p_0 in RST
@@ -19,7 +20,7 @@ pub struct RadarCell {
     pub elevation: f64,                // elv in RST
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq)]
 pub struct RadarBeam {
     pub scan: i32,                // scan in RST
     pub beam: i32,                // bm in RST
@@ -47,6 +48,7 @@ impl RadarBeam {
     }
 }
 
+#[derive(PartialEq)]
 pub struct RadarScan {
     pub station_id: i32,       // stid in RST
     pub version_major: i32,    // version.major in RST
@@ -64,7 +66,7 @@ impl RadarScan {
 
     /// Remove beams whose beam number is in beam_list
     /// Called RadarScanResetBeam in RST
-    pub fn reset_beams(&mut self, beam_list: &Vec<i32>) -> Result<(), BackscatterError> {
+    pub fn reset_beams(&mut self, beam_list: &Vec<i32>) -> Result<(), ProcdarnError> {
         // remove beams from self.beams that are in beam_list
         self.beams = self
             .beams
@@ -94,28 +96,37 @@ impl RadarScan {
             .collect();
     }
 
-    /// Read a full scan of data from a vector of FitacfRecords. If scan_length is Some(x), will
-    /// grab the first records spanning x seconds. Otherwise, uses the scan flag in the FitacfRecords
+    /// Read a full scan of data from a vector of FitacfRecords. If scan_length is `Some(x)`, will
+    /// grab the first records spanning `x` seconds. Otherwise, uses the scan flag in the FitacfRecords
     /// to determine the end of the scan.
     /// Called FitReadRadarScan in fitscan.c of RST.
     pub fn get_first_scan(
         fit_records: &[FitacfRecord],
         scan_length: Option<u32>,
-    ) -> Result<RadarScan, BackscatterError> {
+    ) -> Result<RadarScan, ProcdarnError> {
         if fit_records.len() == 0 {
-            Err(BackscatterError::new(
+            return Err(ProcdarnError::new(
                 "Unable to extract scan, no records found",
-            ))
+            ));
         }
         let mut rec = &fit_records[0];
         let mut scan: RadarScan = RadarScan {
-            station_id: rec.station_id as i32,
-            version_major: rec.radar_revision_major as i32,
-            version_minor: rec.radar_revision_minor as i32,
-            start_time: NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
-                .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
-                .timestamp()
-                + (rec.microsecond as f64) / 1e6,
+            station_id: rec.get(&"station_id".to_string())?.into(),
+            version_major: rec.get(&"radar_revision_major".to_string())?.into(),
+            version_minor: rec.get(&"radar_revision_minor".to_string())?.into(),
+            start_time: NaiveDate::from_ymd_opt(
+                rec.get(&"year".to_string())?.into(),
+                rec.get(&"month".to_string()?.into()),
+                rec.get(&"day".to_string()?.into()),
+            )?
+            .and_hms_opt(
+                rec.get(&"hour".to_string()?.into()),
+                rec.get(&"minute".to_string()?.into()),
+                rec.get(&"second".to_string()?.into()),
+            )?
+            .and_utc()
+            .timestamp()
+                + i64::from(rec.get(&"microsecond".to_string())?) as f64 / 1e6,
             ..Default::default()
         };
 
@@ -123,47 +134,57 @@ impl RadarScan {
             rec = &fit_records[i];
 
             let mut beam = RadarBeam {
-                time: NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
-                    .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
-                    .timestamp()
-                    + (rec.microsecond as f64) / 1e6,
-                scan: rec.scan_flag as i32,
-                beam: rec.beam_num as i32,
-                beam_azimuth: rec.beam_azimuth,
-                program_id: rec.control_program as i32,
-                integration_time_s: rec.intt_second as i32,
-                integration_time_us: rec.intt_microsecond,
-                num_averages: rec.num_averages as i32,
-                first_range: rec.first_range as i32,
-                range_sep: rec.range_sep as i32,
-                rx_rise: rec.rx_rise_time as i32,
-                freq: rec.tx_freq as i32,
-                noise: rec.search_noise as i32,
-                attenuation: rec.attenuation as i32,
-                channel: rec.channel as i32,
-                num_ranges: rec.num_ranges as i32,
+                time: NaiveDate::from_ymd_opt(
+                    rec.get(&"year".to_string())?.into(),
+                    rec.get(&"month".to_string())?.into(),
+                    rec.get(&"day".to_string())?.into(),
+                )?
+                .and_hms_opt(
+                    rec.get(&"hour".to_string())?.into(),
+                    rec.get(&"minute".to_string())?.into(),
+                    rec.get(&"second".to_string())?.into(),
+                )?
+                .and_utc()
+                .timestamp()
+                    + (rec.get(&"microsecond".to_string())?.into()) / 1e6,
+                scan: rec.get(&"scan_flag".to_string())?.into(),
+                beam: rec.get(&"beam_num".to_string())?.into(),
+                beam_azimuth: rec.get(&"beam_azimuth".to_string())?.into(),
+                program_id: rec.get(&"control_program".to_string())?.into(),
+                integration_time_s: rec.get(&"intt_second".to_string())?.into(),
+                integration_time_us: rec.get(&"intt_microsecond".to_string())?.into(),
+                num_averages: rec.get(&"num_averages".to_string())?.into(),
+                first_range: rec.get(&"first_range".to_string())?.into(),
+                range_sep: rec.get(&"range_sep".to_string())?.into(),
+                rx_rise: rec.get(&"rx_rise_time".to_string())?.into(),
+                freq: rec.get(&"tx_freq".to_string())?.into(),
+                noise: rec.get(&"search_noise".to_string())?.into(),
+                attenuation: rec.get(&"attenuation".to_string())?.into(),
+                channel: rec.get(&"channel".to_string())?.into(),
+                num_ranges: rec.get(&"num_ranges".to_string())?.into(),
                 ..Default::default()
             };
             for r in 0..beam.num_ranges {
-                beam.scatter.push(rec.quality_flag.clone().collect());
+                beam.scatter
+                    .push(rec.get(&"quality_flag".to_string())?.clone().collect());
 
                 // Create a new measurement (RadarCell) and populate it
                 let mut cell = RadarCell {
-                    groundscatter: rec.ground_flag[r],
-                    power_lag_zero: rec.lag_zero_power[r],
+                    groundscatter: rec.get(&"ground_flag".to_string())?[r],
+                    power_lag_zero: rec.get(&"lag_zero_power".to_string())?[r],
                     power_error_lag_zero: 0.0,
-                    velocity: rec.velocity[r],
-                    power_lin: rec.lambda_power[r],
-                    spectral_width_lin: rec.lambda_spectral_width[r],
-                    velocity_error: rec.velocity_error[r],
+                    velocity: rec.get(&"velocity".to_string())?[r],
+                    power_lin: rec.get(&"lambda_power".to_string())?[r],
+                    spectral_width_lin: rec.get(&"lambda_spectral_width".to_string())?[r],
+                    velocity_error: rec.get(&"velocity_error".to_string())?[r],
                     ..Default::default()
                 };
-                if let Some(x) = rec.lag_zero_phi.clone() {
+                if let Some(x) = rec.get(&"lag_zero_phi".to_string())?.clone() {
                     cell.phi_zero = x[r]
                 } else {
                     cell.phi_zero = 0.0
                 }
-                if let Some(x) = rec.elevation.clone() {
+                if let Some(x) = rec.get(&"elevation".to_string())?.clone() {
                     cell.elevation = x[r]
                 } else {
                     cell.elevation = 0.0
@@ -177,11 +198,21 @@ impl RadarScan {
             scan.beams.push(beam);
 
             // Update the end time of the scan
-            scan.end_time =
-                NaiveDate::from_ymd_opt(rec.year as i32, rec.month as u32, rec.day as u32)?
-                    .and_hms_opt(rec.hour as u32, rec.minute as u32, rec.second as u32)?
-                    .timestamp()
-                    + (rec.microsecond as f64) / 1e6;
+            scan.end_time = NaiveDate::from_ymd_opt(
+                rec.get(&"year".to_string())?.into(),
+                rec.get(&"month".to_string()?.into()),
+                rec.get(&"day".to_string()?.into()),
+            )?
+            .and_hms_opt(
+                rec.get(&"hour".to_string()?.into()),
+                rec.get(&"minute".to_string()?.into()),
+                rec.get(&"second".to_string()?.into()),
+            )?
+            .and_utc()
+            .timestamp() as f64
+                + rec.get(&"microsecond".to_string()).ok_or(ProcdarnError::from(DmapError::InvalidScalar(
+                "microsecond".to_string(),
+            )))?.into() / 1e6;
 
             // Conditions for finding the end of the scan
             match scan_length {
@@ -193,7 +224,16 @@ impl RadarScan {
                 }
                 // If the next record is the start of a new scan
                 None => {
-                    if i < fit_records.len() - 1 && fit_records[i + 1].scan_flag.abs() == 1 {
+                    if i < fit_records.len() - 1
+                        && fit_records[i + 1]
+                            .get(&"scan_flag".to_string())
+                            .ok_or(ProcdarnError::from(DmapError::InvalidScalar(
+                                "scan_flag".to_string(),
+                            )))?
+                            .into()
+                            .abs()
+                            == 1
+                    {
                         break;
                     }
                 }
@@ -206,13 +246,13 @@ impl RadarScan {
     /// Called exclude_range in make_grid.c of RST.
     pub fn exclude_range(
         &mut self,
-        min_range_gate: Option<i32>,
-        max_range_gate: Option<i32>,
+        min_range_gate: Option<usize>,
+        max_range_gate: Option<usize>,
         min_slant_range: Option<f32>,
         max_slant_range: Option<f32>,
     ) {
         let range_edge = 0;
-        for beam in self.beams.iter_mut().filter(|&b| b.beam != -1) {
+        for beam in self.beams.iter_mut().filter(|b| b.beam != -1) {
             // If either min or max slant range given, then exclude data using slant range filters
             if min_slant_range.is_some() || max_slant_range.is_some() {
                 for rg in 0..beam.num_ranges {
@@ -226,17 +266,17 @@ impl RadarScan {
                     match (min_slant_range, max_slant_range) {
                         (Some(min), Some(max)) => {
                             if min > range_slant || range_slant > max {
-                                beam.scatter[rg] = 0;
+                                beam.scatter[rg as usize] = 0;
                             }
                         }
                         (Some(min), None) => {
                             if min > range_slant {
-                                beam.scatter[rg] = 0;
+                                beam.scatter[rg as usize] = 0;
                             }
                         }
                         (None, Some(max)) => {
                             if range_slant > max {
-                                beam.scatter[rg] = 0;
+                                beam.scatter[rg as usize] = 0;
                             }
                         }
                         (None, None) => {}
@@ -247,20 +287,20 @@ impl RadarScan {
                 match (min_range_gate, max_range_gate) {
                     (Some(min), Some(max)) => {
                         for scat in beam.scatter[..min].iter_mut() {
-                            scat = 0;
+                            *scat = 0;
                         }
                         for scat in beam.scatter[max..].iter_mut() {
-                            scat = 0;
+                            *scat = 0;
                         }
                     }
                     (Some(min), None) => {
                         for scat in beam.scatter[..min].iter_mut() {
-                            scat = 0;
+                            *scat = 0;
                         }
                     }
                     (None, Some(max)) => {
                         for scat in beam.scatter[max..].iter_mut() {
-                            scat = 0;
+                            *scat = 0;
                         }
                     }
                     (None, None) => {}
@@ -273,7 +313,7 @@ impl RadarScan {
     /// Called FilterBoundType in bound.c of RST
     pub fn exclude_groundscatter(&mut self) {
         for beam in self.beams.iter_mut() {
-            for rg in 0..beam.num_ranges {
+            for rg in 0..beam.num_ranges as usize {
                 if beam.scatter[rg] == 0 {
                     continue;
                 }
@@ -288,7 +328,7 @@ impl RadarScan {
     /// Called FilterBoundType in bound.c of RST
     pub fn exclude_ionospheric_scatter(&mut self) {
         for beam in self.beams.iter_mut() {
-            for rg in 0..beam.num_ranges {
+            for rg in 0..beam.num_ranges as usize {
                 if beam.scatter[rg] == 0 {
                     continue;
                 }
@@ -301,7 +341,7 @@ impl RadarScan {
 
     pub fn exclude_outofbounds(&mut self, grid_table: &GridTable) {
         for beam in self.beams.iter_mut() {
-            for rg in 0..beam.num_ranges {
+            for rg in 0..beam.num_ranges as usize {
                 if beam.scatter[rg] == 0 {
                     continue;
                 }
