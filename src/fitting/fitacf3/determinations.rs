@@ -1,5 +1,6 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::RangeNode;
+use crate::utils::dmap::convert_to_dmapvec;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use chrono::Utc;
@@ -409,10 +410,6 @@ pub(crate) fn determinations(
     Ok(new_rec)
 }
 
-/// Computes the elevation angles and errors for the record.
-///
-/// Computes elevation angles using both the XCF fit intercept (with error)
-/// and phi0 from the XCF.
 fn calculate_elevation(
     ranges: &[RangeNode],
     rec: &Rawacf,

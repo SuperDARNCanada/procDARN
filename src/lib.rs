@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 pub mod error;
 pub mod fitting;
+pub mod gridding;
 pub mod utils;
 
 /// Fits a list of RAWACF records into FITACF records using the FITACFv3 algorithm.
