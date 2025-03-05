@@ -1,27 +1,32 @@
+use crate::error::ProcdarnError;
 use crate::utils::scan::RadarScan;
-use std::error::Error;
-use std::fmt;
-use std::fmt::Display;
+use dmap::error::DmapError;
+use thiserror::Error;
 
 type Result<T> = std::result::Result<T, GridError>;
 
-#[derive(Debug, Clone)]
+/// Enum of the possible error variants that may be encountered
+#[derive(Error, Debug)]
 pub enum GridError {
-    Message(String),
-    Lookup(String),
-    Mismatch { msg: String },
-}
+    /// Represents an error in the Rawacf record that is attempting to be fitted
+    #[error("{0}")]
+    InvalidFitacf(String),
 
-impl Error for GridError {}
+    /// Represents an error in processing of the record, for any reason
+    #[error("{0}")]
+    ProcessingError(String),
 
-impl Display for GridError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            GridError::Message(msg) => write!(f, "{}", msg),
-            GridError::Lookup(msg) => write!(f, "{}", msg),
-            GridError::Mismatch { msg } => write!(f, "{}", msg),
-        }
-    }
+    /// Unable to get hardware file information
+    #[error("{0}")]
+    Hdw(#[from] ProcdarnError),
+
+    /// Invalid DMAP file
+    #[error("{0}")]
+    Dmap(#[from] DmapError),
+
+    /// Error in `igrf` crate
+    #[error("{0}")]
+    Igrf(#[from] igrf::Error),
 }
 
 /// Checks to make sure the radar operating parameters do not change significantly between scans.

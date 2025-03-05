@@ -252,7 +252,7 @@ fn fieldpoint_height(
     height: f64,
     slant_range: f64,
     chisham: bool,
-) -> Coor4D {
+) -> Result<Coor4D, ProcdarnError> {
     let mut xh: f64;
     if chisham {
         if slant_range < 787.5 {
@@ -286,7 +286,7 @@ fn fieldpoint_height(
     let radar_geo = ellipse.cartesian(&point);
 
     let radar_radius = radar_geo[2]; // Radius of Earth beneath point
-    let mut fieldpoint_radius = radar_radius; // Will update with calculations
+    let fieldpoint_radius = radar_radius; // Will update with calculations
     let mut fpoint = Coor4D::default();
 
     // This will prevent elevation angle from being NaN later on
@@ -354,7 +354,7 @@ fn fieldpoint_height(
         fieldpoint_height = fpoint[2] - fieldpoint_radius;
     }
 
-    fpoint
+    Ok(fpoint)
 }
 
 /// This function converts a gate/beam coordinate to geographic position. The height of the
@@ -373,7 +373,7 @@ fn rpos_geo(
     rx_rise_time: f64,
     altitude: f64,
     chisham: bool,
-) -> Coor4D {
+) -> Result<Coor4D, ProcdarnError> {
     let mut beam_edge: f64 = 0.0;
     let mut range_edge: f64 = 0.0;
 
@@ -468,7 +468,7 @@ pub fn rpos_range_beam_azimuth_elevation(
         rx_rise_time,
         altitude,
         chisham,
-    );
+    )?;
 
     // Convert range/beam position from geocentric coordinates to global Cartesian coordinates
     let cell_cartesian = ellipse.cartesian(&cell_geoc);
@@ -494,7 +494,8 @@ pub fn rpos_range_beam_azimuth_elevation(
         cell_geoc[1],
         cell_geoc[0],
         cell_geoc[2] as u32,
-        Date::from_calendar_date(year, time::Month::January, 1)?,
+        Date::from_calendar_date(year, time::Month::January, 1)
+            .map_err(|_| ProcdarnError::Timestamp("bad year"))?,
     )?;
 
     // Convert from north/east/down coordinates to south/east/up
@@ -557,7 +558,7 @@ pub fn rpos_inv_mag(
         rx_rise_time,
         altitude,
         chisham,
-    );
+    )?;
 
     // Convert range/beam position from geocentric coordinates to global Cartesian coordinates
     let cell_cartesian = ellipse.cartesian(&cell_geoc);
@@ -583,7 +584,8 @@ pub fn rpos_inv_mag(
         cell_geoc[1],
         cell_geoc[0],
         cell_geoc[2] as u32,
-        Date::from_calendar_date(year, time::Month::January, 1)?,
+        Date::from_calendar_date(year, time::Month::January, 1)
+            .map_err(|_| ProcdarnError::Timestamp("bad year"))?,
     )?;
 
     // Convert from north/east/down coordinates to south/east/up

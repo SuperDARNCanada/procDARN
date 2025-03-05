@@ -1,10 +1,10 @@
-use crate::error::BackscatterError;
+use crate::error::ProcdarnError;
 use crate::utils::scan::{RadarBeam, RadarCell, RadarScan};
 
 pub const MAX_BEAM: i32 = 256;
-pub const FILTER_HEIGHT: i32 = 3;
-pub const FILTER_WIDTH: i32 = 3;
-pub const FILTER_DEPTH: i32 = 3;
+pub const FILTER_HEIGHT: usize = 3;
+pub const FILTER_WIDTH: usize = 3;
+pub const FILTER_DEPTH: usize = 3;
 
 /// Calculates the mean and standard deviation of a parameter from the vector `v`.
 /// `f` is used to extract the parameter from an entry of `v`.
@@ -16,13 +16,13 @@ fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f64) -> (f64, 
     for &cell in v.iter() {
         mean += f(cell);
     }
-    mean /= v.len();
+    mean = mean / v.len() as f64;
 
     // Calculate the variance of the velocity values
     for &cell in v.iter() {
         variance += (f(cell) - mean) * (f(cell) - mean);
     }
-    variance /= v.len();
+    variance = variance / v.len() as f64;
     let sigma = variance.sqrt();
 
     (mean, sigma)
@@ -73,24 +73,25 @@ fn calculate_median_sigma(
 /// Called FilterRadarScan in filter.c of RST.
 pub fn median_filter(
     mode: i32,
-    depth: i32,
+    depth: u32,
     index: i32,
     param: i32,
     isort: bool,
     scans: &[&RadarScan],
-) -> Result<RadarScan, BackscatterError> {
+) -> Result<RadarScan, ProcdarnError> {
     let mut out_scan = RadarScan {
         ..Default::default()
     };
     let mut max_beam: i32 = -1;
-    let mut max_range: i32 = 1000;
+    let mut max_range: usize = 1000;
     let threshold = &[12, 24];
-    let filter_depth: usize;
-    if depth > FILTER_DEPTH {
-        filter_depth = FILTER_DEPTH as usize;
-    } else {
-        filter_depth = depth as usize;
-    }
+    let filter_depth = {
+        if depth as usize > FILTER_DEPTH {
+            FILTER_DEPTH
+        } else {
+            depth as usize
+        }
+    };
 
     // Find the largest beam number and range number in all the scans
     for i in 0..filter_depth {
@@ -98,8 +99,8 @@ pub fn median_filter(
             if beam.beam > max_beam {
                 max_beam = beam.beam + 1; // Add one since beam number is indexed from 0
             }
-            if beam.num_ranges > max_range {
-                max_range = beam.num_ranges;
+            if beam.num_ranges as usize > max_range {
+                max_range = beam.num_ranges as usize;
             }
         }
     }
@@ -110,10 +111,13 @@ pub fn median_filter(
     //   1 2 1    2 4 2    1 2 1  | range
     //   1 1 1    2 2 2    1 1 1  ⌄
     //   <---------time--------> (previous scan, current scan, next scan)
-    let mut weights: [[[i32; FILTER_DEPTH as usize]; FILTER_HEIGHT as usize];
-        FILTER_WIDTH as usize] = [];
+    let mut weights: [[[i32; FILTER_DEPTH]; FILTER_HEIGHT]; FILTER_WIDTH] = [
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+    ];
     let mut f: i32;
-    let mut w: i32 = 1;
+    let mut w: i32;
     for z in 0..FILTER_DEPTH {
         if z == 1 {
             f = 2;
@@ -133,14 +137,14 @@ pub fn median_filter(
     }
 
     // [max_beams, depth, num_points] to store all observations grouped by beam number
-    let mut beam_pointers: Vec<Vec<Vec<Option<RadarBeam>>>> = Vec::with_capacity(max_beam as usize);
+    let mut beam_pointers: Vec<Vec<Vec<RadarBeam>>> = Vec::with_capacity(max_beam as usize);
 
     // The largest amount of observations for a given beam, for any scan
     let mut max_observations_for_a_beam: i32 = 0;
 
     // Add enough beams and ranges to the output RadarScan
-    for beam in 0..max_beam {
-        out_scan.add_beam(max_range);
+    for beam in 0..max_beam as usize {
+        out_scan.add_beam(max_range as i32);
         out_scan.beams[beam].beam = -1;
 
         // Initialize some vectors for storing observations along a beam direction
@@ -153,28 +157,34 @@ pub fn median_filter(
 
     for z in 0..depth {
         // Figure out if this scan is the current, previous, or next scan
-        let mut i = index - (depth - 1) + z;
-        if i < 0 {
-            i += depth;
-        }
+        let i: usize = {
+            if (index - (depth as i32 - 1) + z as i32) < 0 {
+                (index + 1 + z as i32) as usize
+            } else {
+                (index - (depth as i32 - 1) + z as i32) as usize
+            }
+        };
 
         // Loop through the beams in this scan
         for beam in scans[i].beams.iter() {
-            let beam_num = beam.beam;
-            beam_pointers[beam_num][depth].push(beam);
+            let beam_num = beam.beam as usize;
+            beam_pointers[beam_num][depth as usize].push(beam.clone());
 
             // Update the largest amount of observations seen
-            if beam_pointers[beam_num][depth].len() > max_observations_for_a_beam {
-                max_observations_for_a_beam = beam_pointers[beam_num][depth].len();
+            if beam_pointers[beam_num][depth as usize].len() as i32 > max_observations_for_a_beam {
+                max_observations_for_a_beam = beam_pointers[beam_num][depth as usize].len() as i32;
             }
         }
     }
 
     // Get index of center scan in temporal dimension
-    let mut i = index - 1;
-    if i < 0 {
-        i += depth;
-    }
+    let i: usize = {
+        if index - 1 < 0 {
+            (depth as i32 + index - 1) as usize
+        } else {
+            index as usize - 1
+        }
+    };
 
     // Copy over parameters from center scan
     out_scan.station_id = scans[i].station_id;
@@ -185,16 +195,16 @@ pub fn median_filter(
 
     // If mode is a multiple of
     if mode % 4 == 0 {
-        for beam_num in 0..max_beam {
+        for beam_num in 0..max_beam as usize {
             // If center scan doesn't have beams then skip this beam
-            if beam_pointers[beam_num][depth / 2].len() == 0 {
+            if beam_pointers[beam_num][depth as usize / 2].len() == 0 {
                 continue;
             }
-            let beam = &beam_pointers[beam_num][depth / 2][0]; // First beam
-            let b = &out_scan.beams[beam_num];
+            let beam = &beam_pointers[beam_num][depth as usize / 2][0]; // First beam
+            let b = &mut out_scan.beams[beam_num];
 
             // Copy radar operating parameters from first beam into corresponding beam of out_scan
-            b.beam = beam_num;
+            b.beam = beam_num as i32;
             b.program_id = beam.program_id;
             b.time = beam.time;
             b.integration_time_s = beam.integration_time_s;
@@ -210,12 +220,12 @@ pub fn median_filter(
             b.num_ranges = beam.num_ranges;
         }
     } else {
-        for beam_num in 0..max_beam {
+        for beam_num in 0..max_beam as usize {
             let b = &mut out_scan.beams[beam_num];
 
             // Initialize radar operating parameters
             b.program_id = -1;
-            b.time = 0;
+            b.time = 0.0;
             b.integration_time_s = 0;
             b.integration_time_us = 0;
             b.first_range = 0;
@@ -228,18 +238,18 @@ pub fn median_filter(
             b.num_ranges = -1;
         }
 
-        for z in 0..depth {
-            for beam_num in 0..max_beam {
+        for z in 0..depth as usize {
+            for beam_num in 0..max_beam as usize {
                 // If no beams previously found, continue
                 if beam_pointers[beam_num][z].len() == 0 {
                     continue;
                 }
 
                 // Corresponding beam in out_scan
-                let mut out_beam = &mut out_scan.beams[beam_num];
+                let out_beam = &mut out_scan.beams[beam_num];
 
                 // Setting beam number in out_scan for this beam
-                out_beam.beam = beam_num;
+                out_beam.beam = beam_num as i32;
 
                 // Go through all beams for this beam/time combo
                 for in_beam in beam_pointers[beam_num][z].iter() {
@@ -271,34 +281,34 @@ pub fn median_filter(
                     // If this is the first beam in the time/beam combo then use max_range
                     // to set the number of range gates for the beam
                     if out_beam.num_ranges == -1 {
-                        out_beam.num_ranges = max_range;
+                        out_beam.num_ranges = max_range as i32;
                     }
                 }
             }
         }
 
-        for beam_num in 0..max_beam {
-            let mut count = 0;
+        for beam_num in 0..max_beam as usize {
+            let mut count: i32 = 0;
 
             // Count all the observations for this beam, summing over all scans being averaged
-            for z in 0..depth {
-                count += beam_pointers[beam_num][z].len();
+            for z in 0..depth as usize {
+                count += beam_pointers[beam_num][z].len() as i32;
             }
 
             // Corresponding beam in out_scan
             let out_beam = &mut out_scan.beams[beam_num];
 
-            out_beam.time /= count;
-            out_beam.num_averages /= count;
-            out_beam.first_range /= count;
-            out_beam.range_sep /= count;
-            out_beam.rx_rise /= count;
-            out_beam.freq /= count;
-            out_beam.noise /= count;
-            out_beam.attenuation /= count;
-            out_beam.integration_time_us /= count;
+            out_beam.time = out_beam.time / count as f64;
+            out_beam.num_averages = out_beam.num_averages / count;
+            out_beam.first_range = out_beam.first_range / count;
+            out_beam.range_sep = out_beam.range_sep / count;
+            out_beam.rx_rise = out_beam.rx_rise / count;
+            out_beam.freq = out_beam.freq / count;
+            out_beam.noise = out_beam.noise / count;
+            out_beam.attenuation = out_beam.attenuation / count;
+            out_beam.integration_time_us = out_beam.integration_time_us / count;
             let mut microseconds = (out_beam.integration_time_s * 1_000_000) / count;
-            out_beam.integration_time_s /= count;
+            out_beam.integration_time_s = out_beam.integration_time_s / count;
             microseconds -= out_beam.integration_time_s * 1_000_000;
             out_beam.integration_time_us += microseconds;
         }
@@ -307,7 +317,7 @@ pub fn median_filter(
     // 3 x 3 x 3 kernel for storing all values of data for median filtering
     let mut kernel = vec![];
 
-    for beam_num in 0..max_beam {
+    for beam_num in 0..max_beam as usize {
         for range in 0..max_range {
             // Set up the spatial 3x3 (beam by range) filtering boundaries
             let mut bmin = beam_num - FILTER_WIDTH / 2;
@@ -322,8 +332,8 @@ pub fn median_filter(
                 bmin = 0;
             }
             // Set upper beam boundary to highest beam when at other edge of FOV
-            if bmax >= max_beam {
-                bmax = max_beam - 1;
+            if bmax >= max_beam as usize {
+                bmax = max_beam as usize - 1;
             }
             // Set lower range boundary to 0 when at nearest edge of FOV
             if rmin < 0 {
@@ -338,11 +348,11 @@ pub fn median_filter(
             let mut weight = 0;
 
             // Loop over beams
-            for x in bmin..bmax {
+            for x in bmin as usize..bmax as usize {
                 // Loop over ranges
                 for y in rmin..rmax {
                     // Loop over time
-                    for z in 0..depth {
+                    for z in 0..depth as usize {
                         // Loop over beams in time/beam combo
                         for beam in beam_pointers[x][z].iter() {
                             // Skip if this range gate is not in the beam
@@ -369,18 +379,18 @@ pub fn median_filter(
             // If the current beam is at the edge of the FOV then increase its weight by 50%
             // TODO: What about near/far range edges?
             // TODO: weight is an integer, this is kinda hacky
-            if beam_num == 0 || beam_num == max_beam - 1 {
-                weight = weight * 1.5;
+            if beam_num == 0 || beam_num == (max_beam - 1).try_into().unwrap() {
+                weight = weight + (weight / 2);
             }
 
             // If the sum of weights of cells with scatter in the kernel is less than the threshold
             // then continue
-            if weight <= threshold[mode % 2] {
+            if weight <= threshold[mode as usize % 2] {
                 continue;
             }
 
             // Threshold was exceeded, so the output scan should have scatter in this beam/range cell
-            let out_beam = &mut out_scan.beams[beam_num];
+            let out_beam = &mut out_scan.beams[beam_num as usize];
             out_beam.scatter[range] = 1;
 
             // Initialize observation parameters to zero
@@ -395,7 +405,7 @@ pub fn median_filter(
             let mut compare_fn: fn(&RadarCell) -> f64 = |x| x.velocity;
             if param % 2 == 1 {
                 (out_cell.velocity, out_cell.velocity_error) =
-                    calculate_median_sigma(&kernel, |x| x.velocity, compare_fn);
+                    calculate_median_sigma(&mut kernel, |x| x.velocity, compare_fn);
             }
 
             // Perform lambda power median filtering if specified
@@ -404,7 +414,7 @@ pub fn median_filter(
                     compare_fn = |x| x.power_lin;
                 }
                 (out_cell.power_lin, out_cell.power_lin_error) =
-                    calculate_median_sigma(&kernel, |x| x.power_lin, compare_fn);
+                    calculate_median_sigma(&mut kernel, |x| x.power_lin, compare_fn);
             }
 
             // Perform spectral width median filtering if specified
@@ -415,7 +425,7 @@ pub fn median_filter(
                 (
                     out_cell.spectral_width_lin,
                     out_cell.spectral_width_lin_error,
-                ) = calculate_median_sigma(&kernel, |x| x.spectral_width_lin, compare_fn);
+                ) = calculate_median_sigma(&mut kernel, |x| x.spectral_width_lin, compare_fn);
             }
 
             // Perform lag0 power median filtering if specified
@@ -424,7 +434,7 @@ pub fn median_filter(
                     compare_fn = |x| x.power_lag_zero;
                 }
                 (out_cell.power_lag_zero, out_cell.power_error_lag_zero) =
-                    calculate_median_sigma(&kernel, |x| x.power_lag_zero, compare_fn);
+                    calculate_median_sigma(&mut kernel, |x| x.power_lag_zero, compare_fn);
             }
         }
     }
