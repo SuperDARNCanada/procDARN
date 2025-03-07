@@ -1,6 +1,6 @@
 use crate::error::ProcdarnError;
 use crate::utils::hdw::HdwInfo;
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{NaiveDate, DateTime, Utc};
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
@@ -179,7 +179,7 @@ impl TryFrom<&RawacfRecord> for Rawacf {
     }
 }
 
-pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(NaiveDateTime, i16), DmapError> {
+pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(DateTime<Utc>, i16), DmapError> {
     let rec_date: NaiveDate = NaiveDate::from_ymd_opt(
         rec.get(&"time.yr".to_string())
             .ok_or_else(|| DmapError::InvalidScalar("Missing time.yr".to_string()))?
@@ -210,7 +210,7 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(NaiveDateTime, i1
                 .clone()
                 .try_into()?,
         )
-        .ok_or_else(|| DmapError::InvalidRecord("Unable to parse timestamp".to_string()))?;
+        .ok_or_else(|| DmapError::InvalidRecord("Unable to parse timestamp".to_string()))?.and_utc();
 
     let station_id: i16 = rec
         .get(&"stid".to_string())

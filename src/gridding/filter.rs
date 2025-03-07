@@ -1,4 +1,3 @@
-use crate::error::ProcdarnError;
 use crate::utils::scan::{RadarBeam, RadarCell, RadarScan};
 
 pub const MAX_BEAM: i32 = 256;
@@ -77,8 +76,8 @@ pub fn median_filter(
     index: i32,
     param: i32,
     isort: bool,
-    scans: &[&RadarScan],
-) -> Result<RadarScan, ProcdarnError> {
+    scans: &[&mut RadarScan],
+) -> RadarScan {
     let mut out_scan = RadarScan {
         ..Default::default()
     };
@@ -320,26 +319,19 @@ pub fn median_filter(
     for beam_num in 0..max_beam as usize {
         for range in 0..max_range {
             // Set up the spatial 3x3 (beam by range) filtering boundaries
-            let mut bmin = beam_num - FILTER_WIDTH / 2;
-            let bbox = beam_num - FILTER_WIDTH / 2;
+            // saturating_sub will stop underflow for these usize types, limiting the result to 0
+            let bmin = beam_num.saturating_sub(FILTER_WIDTH / 2);
+            let bbox = beam_num.saturating_sub(FILTER_WIDTH / 2);
             let mut bmax = beam_num + FILTER_WIDTH / 2;
-            let mut rmin = range - FILTER_HEIGHT / 2;
-            let rbox = range - FILTER_HEIGHT / 2;
+            let rmin = range.saturating_sub(FILTER_HEIGHT / 2);
+            let rbox = range.saturating_sub(FILTER_HEIGHT / 2);
             let mut rmax = range + FILTER_HEIGHT / 2;
 
-            // Set lower beam boundary to 0 when at edge of FOV
-            if bmin < 0 {
-                bmin = 0;
-            }
-            // Set upper beam boundary to highest beam when at other edge of FOV
+            // Set upper beam boundary to the highest beam when at other edge of FOV
             if bmax >= max_beam as usize {
                 bmax = max_beam as usize - 1;
             }
-            // Set lower range boundary to 0 when at nearest edge of FOV
-            if rmin < 0 {
-                rmin = 0;
-            }
-            // Set upper range boundary to furthest range gate when at other edge of FOV
+            // Set upper range boundary to the farthest range gate when at other edge of FOV
             if rmax >= max_range {
                 rmax = max_range - 1;
             }
@@ -348,7 +340,7 @@ pub fn median_filter(
             let mut weight = 0;
 
             // Loop over beams
-            for x in bmin as usize..bmax as usize {
+            for x in bmin..bmax {
                 // Loop over ranges
                 for y in rmin..rmax {
                     // Loop over time
@@ -390,7 +382,7 @@ pub fn median_filter(
             }
 
             // Threshold was exceeded, so the output scan should have scatter in this beam/range cell
-            let out_beam = &mut out_scan.beams[beam_num as usize];
+            let out_beam = &mut out_scan.beams[beam_num];
             out_beam.scatter[range] = 1;
 
             // Initialize observation parameters to zero
@@ -439,5 +431,5 @@ pub fn median_filter(
         }
     }
 
-    Ok(out_scan)
+    out_scan
 }

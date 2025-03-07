@@ -60,25 +60,6 @@ fn cartesian_to_local(loc: &Coor4D, v: &Coor4D) -> Coor4D {
     Coor4D::raw(tx, ty, tz, loc[3])
 }
 
-/// Convert a vector v from local south/east/vertical into radar-to-range/beam cell
-/// coordinates at location loc in geocentric coordinates
-fn local_to_cartesian(loc: &Coor4D, v: &Coor4D) -> Coor4D {
-    // Calculate the colatitude
-    let lax = PI - loc[1];
-
-    // Rotate v about the east-axis by the colatitude
-    let sx = lax.cos() * v[0] + lax.sin() * v[2];
-    let sy = v[1];
-    let sz = -lax.sin() * v[0] + lax.cos() * v[2];
-
-    // Rotate the vector about the z-axis by the longitude
-    let rx = loc[1].cos() * sx - loc[1].sin() * sy;
-    let ry = loc[1].sin() * sx + loc[1].cos() * sy;
-    let rz = sz;
-
-    Coor4D::raw(rx, ry, rz, loc[3])
-}
-
 /// Calculates the slant range to a range gate in km.
 /// Called slant_range in cnvtcoord.c of RST
 pub fn slant_range(
@@ -531,7 +512,7 @@ pub fn rpos_inv_mag(
     rx_rise: f64,
     altitude: f64,
     chisham: bool,
-    old_aacgm: bool,
+    _old_aacgm: bool,
 ) -> Result<(f64, f64, f64), ProcdarnError> {
     let site_location_geo = Coor4D::geo(
         hdw.latitude as f64,
@@ -611,7 +592,12 @@ pub fn rpos_inv_mag(
     // TODO: Accept old_aacgm option
     // Convert range/beam position from geocentric lat/lon at virtual height to AACGM magnetic
     // lat/lon
-    let (mag_lat, mag_lon) = aacgm_v2_convert(cell_geoc[1], cell_geoc[0], virtual_height, 0)?;
+    let mut mag_lat: f64 = 0.0;
+    let mut mag_lon: f64 = 0.0;
+    let mut mag_rad: f64 = 0.0;
+    unsafe {
+        aacgmv2_rs::AACGM_v2_Convert(cell_geoc[1], cell_geoc[0], virtual_height, &mut mag_lat, &mut mag_lon, &mut mag_rad, 0);
+    }
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
@@ -620,8 +606,12 @@ pub fn rpos_inv_mag(
     // TODO: Accept old_aacgm option
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
     // magnetic coordinates
-    let (pointing_mag_lat, mut pointing_mag_lon) =
-        aacgm_v2_convert(pointing_lat, pointing_lon, virtual_height, 0)?;
+    let mut pointing_mag_lat: f64 = 0.0;
+    let mut pointing_mag_lon: f64 = 0.0;
+    let mut pointing_mag_rad: f64 = 0.0;
+    unsafe {
+        aacgmv2_rs::AACGM_v2_Convert(pointing_lat, pointing_lon, virtual_height, &mut pointing_mag_lat, &mut pointing_mag_lon, &mut pointing_mag_rad, 0);
+    }
 
     // Make sure pointing_mag_lon lies between +/- 180 degrees
     if pointing_mag_lon - mag_lon > 180.0 {

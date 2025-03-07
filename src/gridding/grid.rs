@@ -1,14 +1,13 @@
+use std::cmp::PartialEq;
 use crate::error::ProcdarnError;
 use crate::utils::scan::RadarScan;
 use dmap::error::DmapError;
 use thiserror::Error;
 
-type Result<T> = std::result::Result<T, GridError>;
-
 /// Enum of the possible error variants that may be encountered
 #[derive(Error, Debug)]
 pub enum GridError {
-    /// Represents an error in the Rawacf record that is attempting to be fitted
+    /// Represents an error in the Fitacf record that is attempting to be gridded
     #[error("{0}")]
     InvalidFitacf(String),
 
@@ -29,17 +28,18 @@ pub enum GridError {
     Igrf(#[from] igrf::Error),
 }
 
+
 /// Checks to make sure the radar operating parameters do not change significantly between scans.
 /// If the frequency, distance to first range, or range separation change between scans, then the
 /// scattering location for a range gate will also change, so median filtering the data is
 /// nonsensical.
 /// Called FilterCheckOps in checkops.c of RST.
-pub fn check_operational_params(scans: &Vec<&RadarScan>, max_frequency_var: i32) -> bool {
+pub fn check_operational_params(scans: &Vec<&mut RadarScan>, max_frequency_var: i32) -> bool {
     // Choose the middle scan of scans being median filtered
-    let ref_scan = scans[scans.len() / 2];
+    let ref_scan = scans[scans.len() / 2].clone();
 
     // Loop through other scans that are being median filtered
-    for &scan in scans.iter().filter(|&s| *s != ref_scan) {
+    for scan in scans.iter().filter(|&s| **s != ref_scan) {
         // Loop through beams of the reference scan
         for ref_beam in ref_scan.beams.iter() {
             // Loop through beams of the scan under consideration

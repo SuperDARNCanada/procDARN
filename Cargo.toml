@@ -5,6 +5,7 @@ edition = "2021"
 rust-version = "1.74.1"
 
 [dependencies]
+aacgmv2-rs = { version = "0.1.0", path = "/home/remington/repos/aacgmv2-rs"}
 bytemuck = "1.13.1"
 chrono = "0.4.24"
 clap = { version = "4.2.7", features = ["derive"] }

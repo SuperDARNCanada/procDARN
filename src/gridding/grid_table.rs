@@ -99,7 +99,7 @@ impl GridTable {
 
     /// Tests whether gridded data should be written to a file.
     /// Called GridTableTest in RST
-    pub fn test(mut self, scan: &RadarScan) -> bool {
+    pub fn test(&mut self, scan: &RadarScan) -> bool {
         let time = (&scan.start_time + &scan.end_time) / 2.0;
 
         if self.start_time == -1.0 {

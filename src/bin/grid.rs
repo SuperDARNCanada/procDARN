@@ -1,16 +1,17 @@
-use backscatter_rs::gridding::filter::median_filter;
-use backscatter_rs::gridding::grid::check_operational_params;
-use backscatter_rs::gridding::grid_table::GridTable;
-use backscatter_rs::utils::channel::{set_fix_channel, set_stereo_channel};
-use backscatter_rs::utils::hdw::HdwInfo;
-use backscatter_rs::utils::scan::RadarScan;
-use backscatter_rs::utils::search::fit_seek;
-use chrono::{Duration, NaiveDateTime};
+use chrono::{DateTime, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use clap::{value_parser, Parser};
-use dmap::formats::{to_file, DmapRecord, FitacfRecord, GridRecord};
+use dmap::formats::{fitacf::FitacfRecord, grid::GridRecord};
 use rayon::prelude::*;
 use std::fs::File;
 use std::path::PathBuf;
+use dmap::formats::dmap::Record;
+use procdarn::gridding::filter::median_filter;
+use procdarn::gridding::grid::{check_operational_params, GridError};
+use procdarn::gridding::grid_table::GridTable;
+use procdarn::utils::channel::{set_fix_channel, set_stereo_channel};
+use procdarn::utils::hdw::HdwInfo;
+use procdarn::utils::scan::RadarScan;
+use procdarn::utils::search::fit_seek;
 
 pub type BinResult<T, E = Box<dyn std::error::Error + Send + Sync>> = Result<T, E>;
 
@@ -84,11 +85,11 @@ struct Args {
 
     /// Minimum range gate
     #[arg(long, visible_alias = "minrng")]
-    min_range_gate: Option<i32>,
+    min_range_gate: Option<usize>,
 
     /// Maximum range gate
     #[arg(long, visible_alias = "maxrng")]
-    max_range_gate: Option<i32>,
+    max_range_gate: Option<usize>,
 
     /// Minimum slant range in km
     #[arg(long, visible_alias = "minsrng")]
@@ -302,37 +303,37 @@ fn bin_main() -> BinResult<()> {
         num_averages = 1;
     }
     // Preallocate memory for a vector of records that will be boxcar filtered
-    let mut current_scans: Vec<&RadarScan> = Vec::with_capacity(num_averages as usize);
+    let mut current_scans: Vec<&mut RadarScan> = Vec::with_capacity(num_averages as usize);
     let mut grid_record: &RadarScan;
     let mut found_record = Status::NotFound;
     let mut index = 0;
     let mut num_scans = 0;
     let mut record_idx: Option<usize> = None;
-    let mut end_time: NaiveDateTime;
-    let mut hdw_info: Option<HdwInfo>;
-    let mut records_for_file: Vec<GridRecord>;
+    let mut end_time: DateTime<Utc> = DateTime::default();
+    let hdw_info: Option<HdwInfo> = None;
+    let mut records_for_file: Vec<GridRecord> = vec![];
 
     for infile in args.infiles.clone().into_iter() {
-        let fitacf = File::open(infile)?;
+        let fitacf = File::open(&infile)?;
         let fitacf_records = FitacfRecord::read_records(fitacf)?;
 
         // Get the first scan from the file
         let mut this_scan = RadarScan::get_first_scan(&fitacf_records, args.scan_length);
         if this_scan.is_err() {
-            eprintln!(format!("Unable to get first scan from {:?}", infile));
+            eprintln!("Unable to get first scan from {:?}", infile);
             continue;
         }
 
-        current_scans[index] = &this_scan.unwrap();
+        current_scans[index] = &mut this_scan?.clone();
         let file_datetime =
-            NaiveDateTime::from_timestamp_micros(current_scans[index].start_time * 1000.0 as i64);
+            DateTime::from_timestamp_micros((current_scans[index].start_time * 1000.0) as i64).unwrap();
 
         // Determine the starting time for gridding based on the record and input options
-        let mut start_time = file_datetime?;
-        if found_record == Status::NotFound {
+        let mut start_time = file_datetime;
+        if let Status::NotFound = found_record {
             if let (None, None) = (&args.start_date, &args.start_time) {
-                match NaiveDateTime::from_timestamp_micros(
-                    current_scans[0].start_time * 1000.0 as i64,
+                match DateTime::<Utc>::from_timestamp_micros(
+                    (current_scans[0].start_time * 1000.0) as i64,
                 ) {
                     Some(t) => {
                         start_time = t;
@@ -342,10 +343,10 @@ fn bin_main() -> BinResult<()> {
                 found_record = Status::Found;
             } else {
                 let date_string = match &args.start_date {
-                    Some(d) => d,
-                    None => NaiveDateTime::from_timestamp_micros(
-                        current_scans[0].start_time * 1000.0 as i64,
-                    )?
+                    Some(d) => d.clone(),
+                    None => DateTime::<Utc>::from_timestamp_micros(
+                        (current_scans[0].start_time * 1000.0) as i64,
+                    ).unwrap()
                     .format("%Y%m%d")
                     .to_string(),
                 };
@@ -353,9 +354,9 @@ fn bin_main() -> BinResult<()> {
                 let time_string = match &args.start_time {
                     Some(t) => format!("{}", t),
                     // The None branch truncates back to the start of the minute
-                    None => NaiveDateTime::from_timestamp_micros(
-                        current_scans[0].start_time * 1000.0 as i64,
-                    )?
+                    None => DateTime::<Utc>::from_timestamp_micros(
+                        (current_scans[0].start_time * 1000.0).floor() as i64,
+                    ).unwrap()
                     .format("%H:%M")
                     .to_string(),
                 };
@@ -365,24 +366,25 @@ fn bin_main() -> BinResult<()> {
                     "%Y%m%d %H:%M",
                 )
                 .map_err(|_| {
-                    GridError::Message("Unable to parse date and/or time from options".to_string())
-                })?;
+                    GridError::ProcessingError("Unable to parse date and/or time from options".to_string())
+                })?.and_utc();
 
                 // If applying boxcar median filter then we need to load data prior to the usual start
                 // time, so start_time needs to be adjusted
                 if num_averages > 1 {
                     match args.scan_length {
-                        Some(x) => start_time -= Duration::from_secs(x as u64),
+                        Some(x) => start_time -= TimeDelta::new(x as i64, 0).unwrap(),
                         None => {
-                            start_time -= Duration::from_secs(
-                                15 + current_scans[0].end_time - current_scans[0].start_time,
-                            )
+                            start_time -= TimeDelta::new(
+                                (15.0 + current_scans[0].end_time - current_scans[0].start_time).floor() as i64,
+                                0
+                            ).unwrap()
                         }
                     }
                 }
 
                 // Find the first record which occurs after the grid start time, if any
-                if let Some((rec, idx)) = fit_seek(&fitacf_records, start_time) {
+                if let Ok(Some((_, idx))) = fit_seek(&fitacf_records, start_time) {
                     record_idx = Some(idx);
                 } else {
                     eprintln!(
@@ -395,28 +397,35 @@ fn bin_main() -> BinResult<()> {
 
                 // If using scan flag, go to the next beginning of the next scan
                 if let None = args.scan_length {
-                    record_idx = fitacf_records[record_idx..]
-                        .iter()
-                        .position(|rec| rec.scan_flag == 1);
+                    if let Some(x) = record_idx {
+                        record_idx = Some(fitacf_records[x..]
+                            .iter()
+                            .position(|rec| i16::try_from(rec.get(&"scan".to_string())
+                                .unwrap()
+                                .clone()).unwrap() == 1)
+                            .unwrap());
+                    } else {
+                        panic!("No records match requested scan time")
+                    }
+
                 }
 
                 // Read the first full scan of data corresponding to grid start datetime
-                current_scans[0] = match record_idx {
-                    Some(i) => &RadarScan::get_first_scan(&fitacf_records[i..], args.scan_length)?,
-                    None => &RadarScan::get_first_scan(&fitacf_records, args.scan_length)?,
-                };
+                let first_idx = record_idx.unwrap_or_else(|| 0);
+                let this_scan = RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length)?;
+                current_scans[0] = &mut this_scan.clone();
             }
         }
 
-        if found_record == Status::Found {
+        if let Status::Found = found_record {
             end_time = match &args.end_time {
                 Some(t) => {
                     let time_string = format!("{}", t);
                     let date_string = match &args.end_date {
                         Some(d) => format!("{}", d),
-                        None => NaiveDateTime::from_timestamp_micros(
-                            current_scans[0].start_time * 1000.0 as i64,
-                        )?
+                        None => DateTime::<Utc>::from_timestamp_micros(
+                            (current_scans[0].start_time * 1000.0).floor() as i64,
+                        ).ok_or(GridError::ProcessingError("Invalid start_time from first record".to_string()))?
                         .format("%Y%m%d")
                         .to_string(),
                     };
@@ -425,17 +434,16 @@ fn bin_main() -> BinResult<()> {
                         "%Y%m%d %H:%M",
                     )
                     .map_err(|_| {
-                        GridError::Message(
+                        GridError::ProcessingError(
                             "Unable to parse end date and/or time from options".to_string(),
                         )
-                    })?
+                    })?.and_utc()
                 }
                 None => match &args.interval {
                     Some(x) => {
-                        start_time
-                            + Duration::from_secs(
-                                NaiveDateTime::parse_from_str(x?, "%H:%M")?.timestamp(),
-                            )
+                        let dt = DateTime::parse_from_str(x, "%H:%M")?.to_utc().time();
+                        let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+                        start_time + dur
                     }
                     None => panic!("No end time or interval specified for grid"),
                 },
@@ -444,11 +452,13 @@ fn bin_main() -> BinResult<()> {
         }
 
         // TODO: Load AACGM coefficients
+        // aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
 
         num_scans += 1;
+        let mut found_scan: bool = this_scan.is_ok();
 
         // Grid all data until end of gridding time or end of file
-        while this_scan.is_ok() {
+        while found_scan {
             // Exclude scatter in beams listed in args.exclude_beams
             if let Some(b) = &args.exclude_beams {
                 current_scans[index].reset_beams(b)?;
@@ -492,26 +502,22 @@ fn bin_main() -> BinResult<()> {
             // If enough scans have been loaded, proceed with filtering and gridding
             if passed_check && num_scans >= current_scans.capacity() {
                 if filter_weighting_mode != -1 {
-                    match median_filter(
+                    grid_record = &median_filter(
                         filter_weighting_mode,
-                        current_scans.capacity() as i32,
+                        current_scans.capacity() as u32,
                         index as i32,
                         15,
                         args.sort_params_flag,
                         &current_scans,
-                    ) {
-                        Ok(s) => {
-                            grid_record = &s;
-                        }
-                        Err(e) => GridRecord(e),
-                    }
+                    );
                 }
                 grid_record = current_scans[index];
 
                 // If not already done, load HdwInfo for radar
-                if let None = hdw_info {
-                    hdw_info = Some(HdwInfo::new(grid_record.station_id as i16, start_time)?);
-                }
+                let hdw_params = match hdw_info {
+                    Some(ref x) => x,
+                    None => &HdwInfo::new(grid_record.station_id as i16, start_time)?
+                };
 
                 // Test whether the grid table should be written to file
                 if grid_table.test(grid_record) {
@@ -524,8 +530,8 @@ fn bin_main() -> BinResult<()> {
                 // Map GridTable to equal-area grid in magnetic coordinates
                 grid_table.map(
                     grid_record,
-                    &hdw_info?,
-                    args.scan_length? as i32,
+                    &hdw_params,
+                    args.scan_length.unwrap_or(0) as i32,
                     args.inertial_frame_flag,
                     args.altitude as f64,
                     args.chisham_flag,
@@ -540,14 +546,12 @@ fn bin_main() -> BinResult<()> {
             }
 
             // Get the next scan
-            this_scan = match record_idx {
-                Some(i) => RadarScan::get_first_scan(&fitacf_records[i..], args.scan_length),
-                None => RadarScan::get_first_scan(&fitacf_records, args.scan_length),
-            };
+            let start_idx = record_idx.unwrap_or_else(|| 0);
 
-            if let Ok(scan) = this_scan {
-                current_scans[index] = &scan;
-            }
+            this_scan = RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
+            found_scan = this_scan.is_ok();
+            current_scans[index] = &mut (this_scan?.clone());
+
 
             // If scan starts after end_time, this file is done being gridded
             if current_scans[index].start_time > end_time.timestamp() as f64 {
@@ -559,6 +563,5 @@ fn bin_main() -> BinResult<()> {
     }
 
     // Write to file
-    to_file(args.outfile, &records_for_file)?;
-    Ok(())
+    Ok(dmap::write_grid(records_for_file, &args.outfile)?)
 }

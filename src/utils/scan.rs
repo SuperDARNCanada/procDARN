@@ -48,7 +48,7 @@ impl RadarBeam {
     }
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct RadarScan {
     pub station_id: i32,       // stid in RST
     pub version_major: i32,    // version.major in RST
