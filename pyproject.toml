@@ -25,3 +25,4 @@ strip = true
 
 [project.scripts]
 fit_fitacf3 = "procdarn:fit_fitacf3"
+fit2grid = "procdarn:fit2grid"

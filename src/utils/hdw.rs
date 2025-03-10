@@ -112,13 +112,14 @@ impl HdwInfo {
                 let elements: Vec<&str> = line.split_whitespace().collect();
                 let date = elements[2];
                 let time = elements[3];
-                let validity_date = DateTime::parse_from_str(
-                    format!("{date} {time}").as_str(),
-                    "%Y%m%d %H:%M:%S",
-                )
-                .map_err(|_| {
-                    HdwError::InvalidFile("Unable to parse timeframe from hdw file".to_string())
-                })?.to_utc();
+                let validity_date =
+                    DateTime::parse_from_str(format!("{date} {time}").as_str(), "%Y%m%d %H:%M:%S")
+                        .map_err(|_| {
+                            HdwError::InvalidFile(
+                                "Unable to parse timeframe from hdw file".to_string(),
+                            )
+                        })?
+                        .to_utc();
 
                 if datetime < validity_date {
                     break;

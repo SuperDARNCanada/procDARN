@@ -1,4 +1,5 @@
 use crate::fitting::fitacf3::fitacf_v3::{par_fitacf3, Fitacf3Error};
+use crate::gridding::grid::{fit2grid, GridArgs};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::dmap::Record;
@@ -89,12 +90,28 @@ fn fitacf3_cli(py: Python) -> PyResult<()> {
     Ok(())
 }
 
+#[pyfunction]
+#[pyo3(name = "fit2grid")]
+fn fit2grid_cli(py: Python) -> PyResult<()> {
+    let argv = py
+        .import_bound("sys")?
+        .getattr("argv")?
+        .extract::<Vec<String>>()?;
+    let args = GridArgs::parse_from(argv);
+    let grid_records = fit2grid(&args)?;
+    dmap::write_grid(grid_records, &args.outfile)?;
+    Ok(())
+}
+
 /// Functions for SuperDARN data processing.
 #[pymodule]
 fn procdarn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fitacf3_py, m)?)?;
     m.add_function(wrap_pyfunction!(file_fitacf3_py, m)?)?;
     m.add_wrapped(wrap_pyfunction!(fitacf3_cli))?;
+    // m.add_function(wrap_pyfunction!(fit2grid_py, m)?)?;
+    // m.add_function(wrap_pyfunction!(file_fit2grid_py, m)?)?;
+    m.add_wrapped(wrap_pyfunction!(fit2grid_cli))?;
 
     Ok(())
 }

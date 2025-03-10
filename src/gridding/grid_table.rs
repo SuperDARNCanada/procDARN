@@ -8,16 +8,17 @@ use dmap::types::DmapField;
 use indexmap::IndexMap;
 use numpy::ndarray::array;
 use numpy::ndarray::Array;
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 use std::iter;
+use crate::error::ProcdarnError;
 
 pub const GRID_REVISION_MAJOR: i32 = 2;
 pub const GRID_REVISION_MINOR: i32 = 0;
-pub const VELOCITY_ERROR_MIN: f64 = 100.0; // m/s
-pub const POWER_LIN_ERROR_MIN: f64 = 1.0; // a.u. in linear scale
-pub const WIDTH_LIN_ERROR_MIN: f64 = 1.0; // m/s
+pub const VELOCITY_ERROR_MIN: f32 = 100.0; // m/s
+pub const POWER_LIN_ERROR_MIN: f32 = 1.0; // a.u. in linear scale
+pub const WIDTH_LIN_ERROR_MIN: f32 = 1.0; // m/s
 
-pub const RADIUS_EARTH: f64 = 6371.2; // km
+pub const RADIUS_EARTH: f32 = 6371.2; // km
 
 #[derive(Debug, Default)]
 pub struct GridBeam {
@@ -26,8 +27,8 @@ pub struct GridBeam {
     pub range_sep: i32,    // rsep in RST, km
     pub rx_rise: i32,      // rxrise in RST, microseconds?
     pub num_ranges: i32,   // nrang in RST
-    pub azimuth: Vec<f64>, // azm in RST, degrees?
-    pub ival: Vec<f64>,    // ival in RST
+    pub azimuth: Vec<f32>, // azm in RST, degrees?
+    pub ival: Vec<f32>,    // ival in RST
     pub index: Vec<i32>,   // inx in RST
 }
 
@@ -36,17 +37,17 @@ pub struct GridPoint {
     pub max: i32,                   // max in RST
     pub count: i32,                 // cnt in RST
     pub reference: i32,             // ref in RST
-    pub magnetic_lat: f64,          // mlat in RST
-    pub magnetic_lon: f64,          // mlon in RST
-    pub azimuth: f64,               // azm in RST, degrees?
-    pub velocity_median: f64,       // vel.median in RST, m/s
-    pub velocity_median_north: f64, // vel.median_n in RST, m/s
-    pub velocity_median_east: f64,  // vel.median_e in RST, m/s
-    pub velocity_stddev: f64,       // vel.sd in RST, m/s
-    pub power_median: f64,          // pwr.median in RST, a.u. in linear scale
-    pub power_stddev: f64,          // pwr.sd in RST, a.u. in linear scale
-    pub spectral_width_median: f64, // wdt.median in RST, m/s
-    pub spectral_width_stddev: f64, // wdt.sd in RST, m/s
+    pub magnetic_lat: f32,          // mlat in RST
+    pub magnetic_lon: f32,          // mlon in RST
+    pub azimuth: f32,               // azm in RST, degrees?
+    pub velocity_median: f32,       // vel.median in RST, m/s
+    pub velocity_median_north: f32, // vel.median_n in RST, m/s
+    pub velocity_median_east: f32,  // vel.median_e in RST, m/s
+    pub velocity_stddev: f32,       // vel.sd in RST, m/s
+    pub power_median: f32,          // pwr.median in RST, a.u. in linear scale
+    pub power_stddev: f32,          // pwr.sd in RST, a.u. in linear scale
+    pub spectral_width_median: f32, // wdt.median in RST, m/s
+    pub spectral_width_stddev: f32, // wdt.sd in RST, m/s
 }
 impl GridPoint {
     pub fn clear(&mut self) {
@@ -72,18 +73,18 @@ pub struct GridTable {
     pub program_id: i32,         // prog_id in RST
     pub num_scans: i32,          // nscan in RST
     pub num_points_npnt: i32,    // npnt in RST, number of grid points
-    pub freq: f64,               // freq in RST
-    pub noise_mean: f64,         // noise.mean in RST
-    pub noise_stddev: f64,       // noise.sd in RST
+    pub freq: f32,               // freq in RST
+    pub noise_mean: f32,         // noise.mean in RST
+    pub noise_stddev: f32,       // noise.sd in RST
     pub groundscatter: i32,      // gsct in RST
-    pub min_power: f64,          // min[0] in RST, a.u. in linear scale
-    pub min_velocity: f64,       // min[1] in RST, m/s
-    pub min_spectral_width: f64, // min[2] in RST, m/s
-    pub min_velocity_error: f64, // min[3] in RST, m/s
-    pub max_power: f64,          // max[0] in RST, a.u. in linear scale
-    pub max_velocity: f64,       // max[1] in RST, m/s
-    pub max_spectral_width: f64, // max[2] in RST, m/s
-    pub max_velocity_error: f64, // max[3] in RST, m/s
+    pub min_power: f32,          // min[0] in RST, a.u. in linear scale
+    pub min_velocity: f32,       // min[1] in RST, m/s
+    pub min_spectral_width: f32, // min[2] in RST, m/s
+    pub min_velocity_error: f32, // min[3] in RST, m/s
+    pub max_power: f32,          // max[0] in RST, a.u. in linear scale
+    pub max_velocity: f32,       // max[1] in RST, m/s
+    pub max_spectral_width: f32, // max[2] in RST, m/s
+    pub max_velocity_error: f32, // max[3] in RST, m/s
     pub num_beams: i32,          // bnum in RST
     pub beams: Vec<GridBeam>,    // bm in RST
     pub num_points_pnum: i32,    // pnum in RST
@@ -113,7 +114,7 @@ impl GridTable {
         self.num_points_npnt = 0;
 
         // Average values across all scans included in the grid table
-        let num_scans: &f64 = &(self.num_scans as f64);
+        let num_scans: &f32 = &(self.num_scans as f32);
         self.freq /= num_scans;
         self.noise_mean /= num_scans;
         self.noise_stddev /= num_scans;
@@ -137,11 +138,9 @@ impl GridTable {
                         .sqrt();
 
                     // Calculate azimuth of weighted mean velocity vector
-                    point.azimuth = &point
+                    point.azimuth = point
                         .velocity_median_east
-                        .atan2(point.velocity_median_north.clone())
-                        * 180.0
-                        / PI;
+                        .atan2(point.velocity_median_north.clone()).to_degrees();
 
                     // Calculate weighted mean of spectral width and power
                     point.spectral_width_median /= &point.spectral_width_stddev;
@@ -169,7 +168,7 @@ impl GridTable {
         self.points
             .iter()
             .position(|x| x.reference == reference)
-            .ok_or(GridError::ProcessingError(format!(
+            .ok_or(GridError::InvalidFitacf(format!(
                 "Point {} not in grid table",
                 reference
             )))
@@ -180,16 +179,16 @@ impl GridTable {
     pub fn add_beam(
         &mut self,
         hdw: &HdwInfo,
-        altitude: f64,
+        altitude: f32,
         time: f64,
         scan_beam: &RadarBeam,
         chisham: bool,
         old_aacgm: bool,
     ) -> Result<usize, GridError> {
-        let velocity_correction: f64 = (2.0 * PI / 86400.0)
+        let velocity_correction: f32 = (2.0 * PI / 86400.0)
             * RADIUS_EARTH
             * 1000.0
-            * (hdw.latitude.clone() as f64).to_radians().cos();
+            * hdw.latitude.to_radians().cos();
         self.num_beams += 1;
 
         let mut grid_beam = GridBeam {
@@ -202,7 +201,7 @@ impl GridTable {
         };
 
         let datetime = DateTime::from_timestamp_micros((time * 1e6).floor() as i64).ok_or(
-            GridError::ProcessingError(format!("invalid timestamp {time}")),
+            ProcdarnError::Timestamp(format!("invalid timestamp {time}")),
         )?;
 
         for range in 0..grid_beam.num_ranges {
@@ -212,9 +211,9 @@ impl GridTable {
                 range,
                 datetime.year(),
                 hdw,
-                grid_beam.first_range as f64,
-                grid_beam.range_sep as f64,
-                grid_beam.rx_rise as f64,
+                grid_beam.first_range as f32,
+                grid_beam.range_sep as f32,
+                grid_beam.rx_rise as f32,
                 altitude,
                 chisham,
             )?;
@@ -225,9 +224,9 @@ impl GridTable {
                 range,
                 datetime.year(),
                 hdw,
-                grid_beam.first_range as f64,
-                grid_beam.range_sep as f64,
-                grid_beam.rx_rise as f64,
+                grid_beam.first_range as f32,
+                grid_beam.range_sep as f32,
+                grid_beam.rx_rise as f32,
                 altitude,
                 chisham,
                 old_aacgm,
@@ -242,7 +241,7 @@ impl GridTable {
             }
 
             // Calculate magnetic grid cell latitude, (e.g. 72.1->72.5, 57.8->57.5, etc)
-            let grid_lat: f64;
+            let grid_lat: f32;
             if mag_lat > 0.0 {
                 grid_lat = mag_lat.floor() + 0.5;
             } else {
@@ -297,7 +296,7 @@ impl GridTable {
                     && x.range_sep == beam.range_sep
                     && x.num_ranges == beam.num_ranges
             })
-            .ok_or(GridError::ProcessingError(format!(
+            .ok_or(GridError::InvalidFitacf(format!(
                 "Beam {} not found in grid table",
                 beam.beam
             )))
@@ -311,7 +310,7 @@ impl GridTable {
         hdw: &HdwInfo,
         tlen: i32,
         iflg: bool,
-        altitude: f64,
+        altitude: f32,
         chisham: bool,
         old_aacgm: bool,
     ) -> Result<(), GridError> {
@@ -395,7 +394,7 @@ impl GridTable {
 
         // TODO: Check if somehow all beams in scan not considered?
 
-        let mut freq: f64 = 0.0;
+        let mut freq = 0.0;
         let mut noise: f64 = 0.0;
         let mut variance: f64 = 0.0;
         let mut count: f64 = 0.0;
@@ -404,20 +403,20 @@ impl GridTable {
             self.program_id = scan_beam.program_id;
 
             // Sum the frequency and noise values
-            freq += scan_beam.freq as f64;
+            freq += scan_beam.freq as f32;
             noise += scan_beam.noise as f64;
             count += 1.0;
         }
 
         // Average frequency and noise over all beams in scan
-        freq = freq / count;
+        freq = freq / count as f32;
         noise = noise / count;
 
         for scan_beam in scan.beams.iter().filter(|beam| beam.beam != -1) {
             variance += (scan_beam.noise as f64 - noise) * (scan_beam.noise as f64 - noise);
         }
-        self.noise_mean += noise;
-        self.noise_stddev += (variance / count).sqrt();
+        self.noise_mean += noise as f32;
+        self.noise_stddev += (variance / count).sqrt() as f32;
         self.freq += freq;
         self.num_scans += 1;
 
@@ -431,7 +430,7 @@ impl GridTable {
 
         let start_time =
             DateTime::from_timestamp_micros((self.start_time * 1000.0).floor() as i64).ok_or(
-                GridError::ProcessingError(format!("Bad start_time {}", self.start_time)),
+                ProcdarnError::Timestamp(format!("Bad start_time {}", self.start_time)),
             )?;
 
         // Find the valid points in the grid
@@ -439,19 +438,19 @@ impl GridTable {
         let num_points = valid_points.len();
 
         // These vector fields require accessing the points of grid_table
-        let magnetic_lat: Vec<f64> = valid_points.iter().map(|&p| p.magnetic_lat).collect();
-        let magnetic_lon: Vec<f64> = valid_points.iter().map(|&p| p.magnetic_lon).collect();
-        let azimuth: Vec<f64> = valid_points.iter().map(|&p| p.azimuth).collect();
+        let magnetic_lat = valid_points.iter().map(|&p| p.magnetic_lat).collect();
+        let magnetic_lon = valid_points.iter().map(|&p| p.magnetic_lon).collect();
+        let azimuth = valid_points.iter().map(|&p| p.azimuth).collect();
         let index: Vec<i32> = valid_points.iter().map(|&p| p.reference).collect();
-        let velocity_median: Vec<f64> = valid_points.iter().map(|&p| p.velocity_median).collect();
-        let velocity_stddev: Vec<f64> = valid_points.iter().map(|&p| p.velocity_stddev).collect();
-        let power_median: Vec<f64> = valid_points.iter().map(|&p| p.power_median).collect();
-        let power_stddev: Vec<f64> = valid_points.iter().map(|&p| p.power_stddev).collect();
-        let spectral_width_median: Vec<f64> = valid_points
+        let velocity_median = valid_points.iter().map(|&p| p.velocity_median).collect();
+        let velocity_stddev = valid_points.iter().map(|&p| p.velocity_stddev).collect();
+        let power_median = valid_points.iter().map(|&p| p.power_median).collect();
+        let power_stddev = valid_points.iter().map(|&p| p.power_stddev).collect();
+        let spectral_width_median = valid_points
             .iter()
             .map(|&p| p.spectral_width_median)
             .collect();
-        let spectral_width_stddev: Vec<f64> = valid_points
+        let spectral_width_stddev: Vec<f32> = valid_points
             .iter()
             .map(|&p| p.spectral_width_stddev)
             .collect();
@@ -468,7 +467,7 @@ impl GridTable {
                 .format("%Y")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("start_year: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_year: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -477,7 +476,7 @@ impl GridTable {
                 .format("%m")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("start_month: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_month: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -486,7 +485,7 @@ impl GridTable {
                 .format("%d")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("start_day: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_day: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -495,7 +494,7 @@ impl GridTable {
                 .format("%H")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("start_hour: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_hour: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -504,7 +503,7 @@ impl GridTable {
                 .format("%M")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("start_minute: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_minute: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -513,7 +512,7 @@ impl GridTable {
                 .format("%S.%.6f")
                 .to_string()
                 .parse::<f64>()
-                .map_err(|e| GridError::ProcessingError(format!("start_second: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("start_second: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -522,7 +521,7 @@ impl GridTable {
                 .format("%Y")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("end_year: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_year: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -531,7 +530,7 @@ impl GridTable {
                 .format("%m")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("end_month: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_month: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -540,7 +539,7 @@ impl GridTable {
                 .format("%d")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("end_day: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_day: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -549,7 +548,7 @@ impl GridTable {
                 .format("%H")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("end_hour: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_hour: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -558,7 +557,7 @@ impl GridTable {
                 .format("%M")
                 .to_string()
                 .parse::<i16>()
-                .map_err(|e| GridError::ProcessingError(format!("end_minute: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_minute: {e}")))?
                 .into(),
         );
         grid_rec.insert(
@@ -567,7 +566,7 @@ impl GridTable {
                 .format("%S.%.6f")
                 .to_string()
                 .parse::<f64>()
-                .map_err(|e| GridError::ProcessingError(format!("end_second: {e}")))?
+                .map_err(|e| ProcdarnError::Timestamp(format!("end_second: {e}")))?
                 .into(),
         );
         grid_rec.insert(

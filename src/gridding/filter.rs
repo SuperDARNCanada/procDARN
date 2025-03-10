@@ -7,7 +7,7 @@ pub const FILTER_DEPTH: usize = 3;
 
 /// Calculates the mean and standard deviation of a parameter from the vector `v`.
 /// `f` is used to extract the parameter from an entry of `v`.
-fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f64) -> (f64, f64) {
+fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f32) -> (f32, f32) {
     let mut mean = 0.0;
     let mut variance = 0.0;
 
@@ -15,13 +15,13 @@ fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f64) -> (f64, 
     for &cell in v.iter() {
         mean += f(cell);
     }
-    mean = mean / v.len() as f64;
+    mean = mean / v.len() as f32;
 
     // Calculate the variance of the velocity values
     for &cell in v.iter() {
         variance += (f(cell) - mean) * (f(cell) - mean);
     }
-    variance = variance / v.len() as f64;
+    variance = variance / v.len() as f32;
     let sigma = variance.sqrt();
 
     (mean, sigma)
@@ -35,9 +35,9 @@ fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f64) -> (f64, 
 /// Returns the median and standard deviation.
 fn calculate_median_sigma(
     kernel: &mut Vec<&RadarCell>,
-    f: fn(&RadarCell) -> f64,
-    g: fn(&RadarCell) -> f64,
-) -> (f64, f64) {
+    f: fn(&RadarCell) -> f32,
+    g: fn(&RadarCell) -> f32,
+) -> (f32, f32) {
     // Calculate mean and std deviation of kernel with respect to lambda power
     let (mean, sigma) = calculate_mean_sigma(&kernel, f);
 
@@ -76,7 +76,7 @@ pub fn median_filter(
     index: i32,
     param: i32,
     isort: bool,
-    scans: &[&mut RadarScan],
+    scans: &[RadarScan],
 ) -> RadarScan {
     let mut out_scan = RadarScan {
         ..Default::default()
@@ -394,7 +394,7 @@ pub fn median_filter(
 
             // TODO: Figure out how to properly check param (RST does bitwise checks)
             // Perform velocity median filtering if specified
-            let mut compare_fn: fn(&RadarCell) -> f64 = |x| x.velocity;
+            let mut compare_fn: fn(&RadarCell) -> f32 = |x| x.velocity;
             if param % 2 == 1 {
                 (out_cell.velocity, out_cell.velocity_error) =
                     calculate_median_sigma(&mut kernel, |x| x.velocity, compare_fn);
@@ -432,4 +432,36 @@ pub fn median_filter(
     }
 
     out_scan
+}
+
+/// Checks to make sure the radar operating parameters do not change significantly between scans.
+/// If the frequency, distance to first range, or range separation change between scans, then the
+/// scattering location for a range gate will also change, so median filtering the data is
+/// nonsensical.
+/// Called FilterCheckOps in checkops.c of RST.
+pub fn check_operational_params(scans: &Vec<RadarScan>, max_frequency_var: i32) -> bool {
+    // Choose the middle scan of scans being median filtered
+    let ref_scan = scans[scans.len() / 2].clone();
+
+    // Loop through other scans that are being median filtered
+    for scan in scans.iter().filter(|&s| *s != ref_scan) {
+        // Loop through beams of the reference scan
+        for ref_beam in ref_scan.beams.iter() {
+            // Loop through beams of the scan under consideration
+            for check_beam in scan.beams.iter().filter(|&b| b.beam == ref_beam.beam) {
+                // Check if the relevant operating parameters are equal or close to equal
+                if ref_beam.first_range != check_beam.first_range {
+                    return false;
+                }
+                if ref_beam.range_sep != check_beam.range_sep {
+                    return false;
+                }
+                if (ref_beam.freq - check_beam.freq).abs() > max_frequency_var {
+                    return false;
+                }
+            }
+        }
+    }
+    // If relevant operating parameters match or are close enough, then return true
+    true
 }

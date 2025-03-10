@@ -1,6 +1,6 @@
 use crate::error::ProcdarnError;
 use crate::utils::hdw::HdwInfo;
-use chrono::{NaiveDate, DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
 use dmap::types::DmapField;
@@ -210,7 +210,8 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(DateTime<Utc>, i1
                 .clone()
                 .try_into()?,
         )
-        .ok_or_else(|| DmapError::InvalidRecord("Unable to parse timestamp".to_string()))?.and_utc();
+        .ok_or_else(|| DmapError::InvalidRecord("Unable to parse timestamp".to_string()))?
+        .and_utc();
 
     let station_id: i16 = rec
         .get(&"stid".to_string())

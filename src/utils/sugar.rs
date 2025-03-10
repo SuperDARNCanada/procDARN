@@ -5,41 +5,41 @@ use dmap::formats::fitacf::FitacfRecord;
 /// Gets the timestamp from a `FitacfRecord`
 pub fn get_datetime(rec: &FitacfRecord) -> Result<DateTime<Utc>, ProcdarnError> {
     let date = NaiveDate::from_ymd_opt(
-        rec.get(&"year".to_string())
-            .ok_or(ProcdarnError::Timestamp("missing `year`"))?
+        rec.get(&"time.yr".to_string())
+            .ok_or(ProcdarnError::Timestamp("missing `time.yr`".to_string()))?
             .clone()
             .try_into()?,
-        rec.get(&"month".to_string())
-            .ok_or(ProcdarnError::Timestamp("missing `month`"))?
+        rec.get(&"time.mo".to_string())
+            .ok_or(ProcdarnError::Timestamp("missing `time.mo`".to_string()))?
             .clone()
             .try_into()?,
-        rec.get(&"day".to_string())
-            .ok_or(ProcdarnError::Timestamp("missing `day`"))?
+        rec.get(&"time.dy".to_string())
+            .ok_or(ProcdarnError::Timestamp("missing `time.dy`".to_string()))?
             .clone()
             .try_into()?,
     )
-    .ok_or(ProcdarnError::Timestamp("invalid ymd timestamp in record"))?;
+    .ok_or(ProcdarnError::Timestamp("invalid ymd timestamp in record".to_string()))?;
     let dt = date
         .and_hms_micro_opt(
-            rec.get(&"hour".to_string())
-                .ok_or(ProcdarnError::Timestamp("missing `hour`"))?
+            rec.get(&"time.hr".to_string())
+                .ok_or(ProcdarnError::Timestamp("missing `time.hr`".to_string()))?
                 .clone()
                 .try_into()?,
-            rec.get(&"minute".to_string())
-                .ok_or(ProcdarnError::Timestamp("missing `minute`"))?
+            rec.get(&"time.mt".to_string())
+                .ok_or(ProcdarnError::Timestamp("missing `time.mt`".to_string()))?
                 .clone()
                 .try_into()?,
-            rec.get(&"second".to_string())
-                .ok_or(ProcdarnError::Timestamp("missing `second`"))?
+            rec.get(&"time.sc".to_string())
+                .ok_or(ProcdarnError::Timestamp("missing `time.sc`".to_string()))?
                 .clone()
                 .try_into()?,
-            rec.get(&"microsecond".to_string())
-                .ok_or(ProcdarnError::Timestamp("missing `microsecond`"))?
+            rec.get(&"time.us".to_string())
+                .ok_or(ProcdarnError::Timestamp("missing `time.us`".to_string()))?
                 .clone()
                 .try_into()?,
         )
         .ok_or(ProcdarnError::Timestamp(
-            "invalid hms_micro timestamp in record",
+            "invalid hms_micro timestamp in record".to_string(),
         ))?
         .and_utc();
 

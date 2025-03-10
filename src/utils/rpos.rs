@@ -1,10 +1,11 @@
-use crate::error::ProcdarnError;
 use crate::gridding::grid_table::RADIUS_EARTH;
 use crate::utils::hdw::HdwInfo;
 use geodesy::prelude::*;
 use igrf::declination;
 use std::f64::consts::PI;
 use time::Date;
+use crate::error::ProcdarnError;
+use crate::gridding::grid::GridError;
 
 /// Normalize a vector.
 fn norm_vector(v: &Coor4D) -> Coor4D {
@@ -228,13 +229,13 @@ fn fieldpoint(radar_location: &Coor3D, direction: &Coor3D) -> Coor3D {
 /// Called fldpnth in cnvtcoord.c of RST
 fn fieldpoint_height(
     mut point: Coor4D,
-    bearing_off_boresight: f64,
-    boresight_bearing: f64,
-    height: f64,
-    slant_range: f64,
+    bearing_off_boresight: f32,
+    boresight_bearing: f32,
+    height: f32,
+    slant_range: f32,
     chisham: bool,
-) -> Result<Coor4D, ProcdarnError> {
-    let mut xh: f64;
+) -> Result<Coor4D, GridError> {
+    let mut xh: f32;
     if chisham {
         if slant_range < 787.5 {
             xh = 108.974 + 0.0191271 * slant_range + 6.68283e-5 * slant_range * slant_range;
@@ -275,30 +276,30 @@ fn fieldpoint_height(
 
     let mut fieldpoint_height = xh + 1.0; // Initialize to make the below loop a do-while loop
     while (fieldpoint_height - xh).abs() > 0.5 {
-        fpoint[2] = fieldpoint_radius + xh;
+        fpoint[2] = fieldpoint_radius + xh as f64;
 
         // Elevation angle relative to horizon [radians]
         let angle_above_horizon =
-            ((fpoint[2] * fpoint[2] - radar_radius * radar_radius - range * range)
-                / (2.0 * radar_radius * range))
+            ((fpoint[2] * fpoint[2] - radar_radius * radar_radius - range as f64 * range as f64)
+                / (2.0 * radar_radius * range as f64))
                 .asin();
 
         // Need to calculate actual elevation angle for 1.5-hop propagation when using Chisham model
         // for coning angle correction
         let xel: f64;
         if chisham && range > 2137.5 {
-            let gamma = ((radar_radius * radar_radius + fpoint[2] * fpoint[2] - range * range)
+            let gamma = ((radar_radius * radar_radius + fpoint[2] * fpoint[2] - range as f64 * range as f64)
                 / (2.0 * radar_radius * fpoint[2]))
                 .acos();
-            let beta = (radar_radius * (gamma / 3.0).sin() / (range / 3.0)).asin();
+            let beta = (radar_radius * (gamma / 3.0).sin() / (range as f64 / 3.0)).asin();
             xel = PI / 2.0 - beta - (gamma / 3.0);
         } else {
             xel = angle_above_horizon;
         }
 
         // Estimate the off-array-normal azimuth
-        let off_boresight_rad = bearing_off_boresight.to_radians();
-        let boresight_bearing_rad = boresight_bearing.to_radians();
+        let off_boresight_rad = bearing_off_boresight.to_radians() as f64;
+        let boresight_bearing_rad = boresight_bearing.to_radians() as f64;
         let tan_azimuth: f64;
         if off_boresight_rad.cos() * off_boresight_rad.cos() - xel.sin() * xel.sin() < 0.0 {
             tan_azimuth = 1e32;
@@ -323,7 +324,7 @@ fn fieldpoint_height(
         // Obtain the global spherical coordinates of the field point
         let sph_fpoint = fieldpoint(
             &Coor3D::raw(radar_geo[0], radar_geo[1], radar_radius),
-            &Coor3D::raw(point[0], angle_above_horizon, range),
+            &Coor3D::raw(point[0], angle_above_horizon, range as f64),
         );
         fpoint[0] = sph_fpoint[0];
         fpoint[1] = sph_fpoint[1];
@@ -332,7 +333,7 @@ fn fieldpoint_height(
         // Recalculate the radius of the Earth beneath the field point
         let _ = ellipse.geographic(&fpoint);
 
-        fieldpoint_height = fpoint[2] - fieldpoint_radius;
+        fieldpoint_height = (fpoint[2] - fieldpoint_radius) as f32;
     }
 
     Ok(fpoint)
@@ -349,31 +350,31 @@ fn rpos_geo(
     beam_num: i32,
     range_gate: i32,
     hdw: &HdwInfo,
-    first_range: f64,
-    range_sep: f64,
-    rx_rise_time: f64,
-    altitude: f64,
+    first_range: f32,
+    range_sep: f32,
+    rx_rise_time: f32,
+    altitude: f32,
     chisham: bool,
-) -> Result<Coor4D, ProcdarnError> {
-    let mut beam_edge: f64 = 0.0;
-    let mut range_edge: f64 = 0.0;
+) -> Result<Coor4D, GridError> {
+    let mut beam_edge: f32 = 0.0;
+    let mut range_edge: f32 = 0.0;
 
     if !center {
-        beam_edge = (-0.5 * hdw.beam_separation) as f64;
+        beam_edge = -0.5 * hdw.beam_separation;
         range_edge = -0.5 * range_sep * 20.0 / 3.0;
     }
 
     let rx_rise = match rx_rise_time {
-        0.0 => hdw.rx_rise_time as f64,
+        0.0 => hdw.rx_rise_time,
         _ => rx_rise_time,
     };
 
-    let offset = hdw.max_num_beams as f64 / 2.0 - 0.5;
+    let offset = hdw.max_num_beams as f32 / 2.0 - 0.5;
 
     // Calculate deviation from boresight in degrees
-    let psi = hdw.beam_separation as f64 * (beam_num as f64 - offset)
+    let psi = hdw.beam_separation * (beam_num as f32 - offset)
         + beam_edge
-        + hdw.boresight_shift as f64;
+        + hdw.boresight_shift;
 
     // Calculate the slant range to the range gate in km
     let distance = slant_range(
@@ -386,12 +387,12 @@ fn rpos_geo(
 
     // If the input altitude is below 90, then it is actually an input elevation angle in degrees.
     // If so, we calculate the field point height
-    let field_point_height: f64;
+    let field_point_height: f32;
     if altitude < 90.0 {
         field_point_height = -RADIUS_EARTH
             + ((RADIUS_EARTH * RADIUS_EARTH)
-                + 2.0 * distance as f64 * RADIUS_EARTH * altitude.to_radians().sin()
-                + distance as f64 * distance as f64)
+                + 2.0 * distance * RADIUS_EARTH * altitude.to_radians().sin()
+                + distance * distance)
                 .sqrt();
     } else {
         field_point_height = altitude;
@@ -408,7 +409,7 @@ fn rpos_geo(
         psi,
         field_point_height,
         altitude,
-        distance as f64,
+        distance,
         chisham,
     )
 }
@@ -418,12 +419,12 @@ pub fn rpos_range_beam_azimuth_elevation(
     range: i32,
     year: i32,
     hdw: &HdwInfo,
-    first_range: f64,
-    range_sep: f64,
-    rx_rise: f64,
-    altitude: f64,
+    first_range: f32,
+    range_sep: f32,
+    rx_rise: f32,
+    altitude: f32,
     chisham: bool,
-) -> Result<(f64, f64), ProcdarnError> {
+) -> Result<(f32, f32), GridError> {
     let site_location_geo = Coor4D::geo(
         hdw.latitude as f64,
         hdw.longitude as f64,
@@ -432,7 +433,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     );
 
     let rx_rise_time = match rx_rise {
-        0.0 => hdw.rx_rise_time as f64,
+        0.0 => hdw.rx_rise_time,
         _ => rx_rise,
     };
 
@@ -476,7 +477,7 @@ pub fn rpos_range_beam_azimuth_elevation(
         cell_geoc[0],
         cell_geoc[2] as u32,
         Date::from_calendar_date(year, time::Month::January, 1)
-            .map_err(|_| ProcdarnError::Timestamp("bad year"))?,
+            .map_err(|_| ProcdarnError::Timestamp(format!("bad year: {year}")))?,
     )?;
 
     // Convert from north/east/down coordinates to south/east/up
@@ -499,7 +500,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     );
     let azimuth = normed_local_del[1].atan2(-normed_local_del[0]);
 
-    Ok((azimuth, elevation))
+    Ok((azimuth as f32, elevation as f32))
 }
 
 pub fn rpos_inv_mag(
@@ -507,13 +508,13 @@ pub fn rpos_inv_mag(
     range: i32,
     year: i32,
     hdw: &HdwInfo,
-    first_range: f64,
-    range_sep: f64,
-    rx_rise: f64,
-    altitude: f64,
+    first_range: f32,
+    range_sep: f32,
+    rx_rise: f32,
+    altitude: f32,
     chisham: bool,
     _old_aacgm: bool,
-) -> Result<(f64, f64, f64), ProcdarnError> {
+) -> Result<(f32, f32, f32), GridError> {
     let site_location_geo = Coor4D::geo(
         hdw.latitude as f64,
         hdw.longitude as f64,
@@ -522,7 +523,7 @@ pub fn rpos_inv_mag(
     );
 
     let rx_rise_time = match rx_rise {
-        0.0 => hdw.rx_rise_time as f64,
+        0.0 => hdw.rx_rise_time,
         _ => rx_rise,
     };
 
@@ -537,7 +538,7 @@ pub fn rpos_inv_mag(
         first_range,
         range_sep,
         rx_rise_time,
-        altitude,
+        altitude as f32,
         chisham,
     )?;
 
@@ -566,7 +567,7 @@ pub fn rpos_inv_mag(
         cell_geoc[0],
         cell_geoc[2] as u32,
         Date::from_calendar_date(year, time::Month::January, 1)
-            .map_err(|_| ProcdarnError::Timestamp("bad year"))?,
+            .map_err(|_| ProcdarnError::Timestamp(format!("invalid year: {year}")))?,
     )?;
 
     // Convert from north/east/down coordinates to south/east/up
@@ -592,16 +593,24 @@ pub fn rpos_inv_mag(
     // TODO: Accept old_aacgm option
     // Convert range/beam position from geocentric lat/lon at virtual height to AACGM magnetic
     // lat/lon
-    let mut mag_lat: f64 = 0.0;
-    let mut mag_lon: f64 = 0.0;
-    let mut mag_rad: f64 = 0.0;
+    let mut mag_lat = 0.0;
+    let mut mag_lon = 0.0;
+    let mut mag_rad = 0.0;
     unsafe {
-        aacgmv2_rs::AACGM_v2_Convert(cell_geoc[1], cell_geoc[0], virtual_height, &mut mag_lat, &mut mag_lon, &mut mag_rad, 0);
+        aacgmv2_rs::AACGM_v2_Convert(
+            cell_geoc[1],
+            cell_geoc[0],
+            virtual_height,
+            &mut mag_lat,
+            &mut mag_lon,
+            &mut mag_rad,
+            0,
+        );
     }
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
-    let (pointing_lat, pointing_lon) = fieldpoint_sphere(cell_geoc, azimuth, range_sep);
+    let (pointing_lat, pointing_lon) = fieldpoint_sphere(cell_geoc, azimuth, range_sep as f64);
 
     // TODO: Accept old_aacgm option
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
@@ -610,7 +619,15 @@ pub fn rpos_inv_mag(
     let mut pointing_mag_lon: f64 = 0.0;
     let mut pointing_mag_rad: f64 = 0.0;
     unsafe {
-        aacgmv2_rs::AACGM_v2_Convert(pointing_lat, pointing_lon, virtual_height, &mut pointing_mag_lat, &mut pointing_mag_lon, &mut pointing_mag_rad, 0);
+        aacgmv2_rs::AACGM_v2_Convert(
+            pointing_lat,
+            pointing_lon,
+            virtual_height,
+            &mut pointing_mag_lat,
+            &mut pointing_mag_lon,
+            &mut pointing_mag_rad,
+            0,
+        );
     }
 
     // Make sure pointing_mag_lon lies between +/- 180 degrees
@@ -624,5 +641,5 @@ pub fn rpos_inv_mag(
     // coordinates
     let azimuth = fieldpoint_azimuth(mag_lat, mag_lon, pointing_mag_lat, pointing_mag_lon);
 
-    Ok((mag_lat, mag_lon, azimuth))
+    Ok((mag_lat as f32, mag_lon as f32, azimuth as f32))
 }

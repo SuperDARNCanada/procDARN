@@ -21,15 +21,15 @@ pub enum ProcdarnError {
     Geodesy(#[from] geodesy::Error),
 
     /// Invalid timestamp in a record
-    #[error("{0}")]
-    Timestamp(&'static str),
+    #[error("invalid timestamp `{0}`")]
+    Timestamp(String),
 
     /// Field missing from a record
-    #[error("{0}")]
+    #[error("missing `{0}`")]
     MissingField(&'static str),
 
     /// Field from a record has the wrong type
-    #[error("{0}")]
+    #[error("wrong type for `{0}`")]
     WrongType(&'static str),
 
     /// Zero records available
