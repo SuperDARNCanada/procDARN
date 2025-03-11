@@ -507,24 +507,22 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         let year = start_time.year() as c_int;
         let month = start_time.month() as c_int;
         let day = start_time.day() as c_int;
-        println!("start_time: {year}, {month}, {day}");
-        println!("Setting AACGM_v2 time"); // todo: remove
         unsafe {
-            // aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
-            aacgmv2_rs::AACGM_v2_SetNow();
+            aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
         }
-        println!("AACGM_v2 time set");
         num_scans += 1;
 
         // Grid all data until end of gridding time or end of file
         while found_scan {
             // Exclude scatter in beams listed in args.exclude_beams
             if let Some(b) = &args.exclude_beams {
+                println!("excluding beams {:?}", &args.exclude_beams);
                 current_scans[index].reset_beams(b)?;
             }
 
             // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
             if args.exclude_neg_scan_flag {
+                println!("excluding data with negative scan flag");
                 current_scans[index].exclude_outofscan();
             }
 
@@ -538,13 +536,16 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
             // Exclude groundscatter or ionospheric scatter, depending on the args given
             if args.groundscatter_only_flag {
+                println!("excluding ionospheric scatter");
                 current_scans[index].exclude_ionospheric_scatter();
             } else if args.ionosphere_only_flag {
+                println!("excluding ground scatter");
                 current_scans[index].exclude_groundscatter();
             }
 
             // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
             if !args.no_limits_flag {
+                println!("Excluding out of bounds");
                 current_scans[index].exclude_outofbounds(&grid_table);
             }
 
@@ -558,6 +559,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 passed_check = check_operational_params(&current_scans, args.max_frequency_var);
             }
 
+            println!("current_scans[{index}]: {:?}\n\n", current_scans[index]);
             // If enough scans have been loaded, proceed with filtering and gridding
             if passed_check && num_scans >= current_scans.capacity() {
                 let grid_record = match filter_weighting_mode {
@@ -571,6 +573,8 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                         &current_scans,
                     )?,
                 };
+
+                println!("grid_record: {grid_record:?}");
 
                 // If not already done, load HdwInfo for radar
                 let hdw_params = match hdw_info {

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_embed::RustEmbed;
 use std::io::{BufRead, BufReader};
 use thiserror::Error;
@@ -113,13 +113,13 @@ impl HdwInfo {
                 let date = elements[2];
                 let time = elements[3];
                 let validity_date =
-                    DateTime::parse_from_str(format!("{date} {time}").as_str(), "%Y%m%d %H:%M:%S")
+                    NaiveDateTime::parse_from_str(format!("{date} {time}").as_str(), "%Y%m%d %H:%M:%S")
                         .map_err(|_| {
                             HdwError::InvalidFile(
                                 "Unable to parse timeframe from hdw file".to_string(),
                             )
                         })?
-                        .to_utc();
+                        .and_utc();
 
                 if datetime < validity_date {
                     break;

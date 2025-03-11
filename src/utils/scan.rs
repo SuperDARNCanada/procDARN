@@ -7,7 +7,7 @@ use numpy::ndarray::ArrayD;
 use crate::error::ProcdarnError;
 use crate::gridding::grid::GridError;
 
-#[derive(Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct RadarCell {
     pub groundscatter: i8,             // gsct in RST
     pub power_lag_zero: f32,           // pwr0 in RST
@@ -22,7 +22,7 @@ pub struct RadarCell {
     pub elevation: f32,                // elv in RST
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarBeam {
     pub scan: i32,                // scan in RST
     pub beam: i32,                // bm in RST
@@ -50,7 +50,7 @@ impl RadarBeam {
     }
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarScan {
     pub station_id: i32,       // stid in RST
     pub version_major: i32,    // version.major in RST
@@ -360,6 +360,7 @@ impl RadarScan {
         min_slant_range: Option<f32>,
         max_slant_range: Option<f32>,
     ) {
+        println!("Excluding ranges outside [{min_range_gate:?}, {max_range_gate:?}] and slant range outside [{min_slant_range:?}, {max_slant_range:?}]");
         let range_edge = 0;
         for beam in self.beams.iter_mut().filter(|b| b.beam != -1) {
             // If either min or max slant range given, then exclude data using slant range filters

@@ -148,15 +148,17 @@ pub fn median_filter(
         out_scan.add_beam(max_range as i32);
         out_scan.beams[beam].beam = -1;
 
+        let mut beam_vec = vec![];
         // Initialize some vectors for storing observations along a beam direction
         for _ in 0..depth {
             // Adding an empty vector for this depth, containing an empty vector for the points
-            beam_pointers.push(vec![vec![]])
+            beam_vec.push(vec![]);
         }
+        beam_pointers.push(beam_vec);
         // beam_pointers should now be [max_beams, depth, 0], where the last dimension is an empty Vec
     }
 
-    for z in 0..depth {
+    for z in 0..depth as usize {
         // Figure out if this scan is the current, previous, or next scan
         let i: usize = {
             if (index - (depth as i32 - 1) + z as i32) < 0 {
@@ -169,11 +171,11 @@ pub fn median_filter(
         // Loop through the beams in this scan
         for beam in scans[i].beams.iter() {
             let beam_num = beam.beam as usize;
-            beam_pointers[beam_num][depth as usize].push(beam.clone());
+            beam_pointers[beam_num][z].push(beam.clone());
 
             // Update the largest amount of observations seen
-            if beam_pointers[beam_num][depth as usize].len() as i32 > max_observations_for_a_beam {
-                max_observations_for_a_beam = beam_pointers[beam_num][depth as usize].len() as i32;
+            if beam_pointers[beam_num][z].len() as i32 > max_observations_for_a_beam {
+                max_observations_for_a_beam = beam_pointers[beam_num][z].len() as i32;
             }
         }
     }

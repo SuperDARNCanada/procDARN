@@ -280,6 +280,7 @@ impl GridTable {
             grid_beam.ival[range as usize] =
                 velocity_correction * (PI * (azimuth_geo + 90.0) / 180.0).cos();
         }
+        self.beams.push(grid_beam);
         // Return index of beam number added to self
         Ok((self.num_beams - 1) as usize)
     }
@@ -287,7 +288,7 @@ impl GridTable {
     /// Find the index of the beam in the grid table whose beam number and operating parameters
     /// match those of the input.
     /// Called GridTableFindBeam in RST
-    pub fn find_beam(&self, beam: &RadarBeam) -> Result<usize, GridError> {
+    pub fn find_beam(&self, beam: &RadarBeam) -> Option<usize> {
         self.beams
             .iter()
             .position(|x| {
@@ -296,10 +297,6 @@ impl GridTable {
                     && x.range_sep == beam.range_sep
                     && x.num_ranges == beam.num_ranges
             })
-            .ok_or(GridError::InvalidFitacf(format!(
-                "Beam {} not found in grid table",
-                beam.beam
-            )))
     }
 
     /// Maps radar scan data to an equal-area grid in magnetic coordinates.
@@ -327,12 +324,14 @@ impl GridTable {
             self.station_id = scan.station_id.clone();
         }
 
+        println!("\n\nscan: {:?}", scan);
+        println!("\n\nself: {:?}", self);
         for scan_beam in scan.beams.iter() {
             let mut beam_index: usize = 0;
             if scan_beam.beam != -1 {
                 beam_index = match self.find_beam(scan_beam) {
-                    Ok(i) => i,
-                    Err(_) => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
+                    Some(i) => i,
+                    None => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
                 };
             }
 
