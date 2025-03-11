@@ -2,7 +2,7 @@ use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
-use chrono::{DateTime, Datelike};
+use chrono::{DateTime, Datelike, Utc, TimeDelta, Timelike};
 use dmap::formats::grid::GridRecord;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
@@ -10,7 +10,6 @@ use numpy::ndarray::array;
 use numpy::ndarray::Array;
 use std::f32::consts::PI;
 use std::iter;
-use crate::error::ProcdarnError;
 
 pub const GRID_REVISION_MAJOR: i32 = 2;
 pub const GRID_REVISION_MINOR: i32 = 0;
@@ -65,8 +64,8 @@ impl GridPoint {
 
 #[derive(Debug, Default)]
 pub struct GridTable {
-    pub start_time: f64,         // st_time in RST
-    pub end_time: f64,           // ed_time in RST
+    pub start_time: DateTime<Utc>,         // st_time in RST
+    pub end_time: DateTime<Utc>,           // ed_time in RST
     pub channel: i32,            // chn in RST
     pub status: i32,             // status in RST
     pub station_id: i32,         // st_id in RST
@@ -101,9 +100,14 @@ impl GridTable {
     /// Tests whether gridded data should be written to a file.
     /// Called GridTableTest in RST
     pub fn test(&mut self, scan: &RadarScan) -> bool {
-        let time = (&scan.start_time + &scan.end_time) / 2.0;
+        let time_micros = (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
+        let time: DateTime<Utc>;
+        match DateTime::from_timestamp_micros(time_micros) {
+            Some(x) => { time = x; },
+            None => return false
+        }
 
-        if self.start_time == -1.0 {
+        if self.start_time == DateTime::<Utc>::default() {
             return false;
         }
 
@@ -180,7 +184,7 @@ impl GridTable {
         &mut self,
         hdw: &HdwInfo,
         altitude: f32,
-        time: f64,
+        time: DateTime<Utc>,
         scan_beam: &RadarBeam,
         chisham: bool,
         old_aacgm: bool,
@@ -200,16 +204,12 @@ impl GridTable {
             ..Default::default()
         };
 
-        let datetime = DateTime::from_timestamp_micros((time * 1e6).floor() as i64).ok_or(
-            ProcdarnError::Timestamp(format!("invalid timestamp {time}")),
-        )?;
-
         for range in 0..grid_beam.num_ranges {
             // Calculate geographic azimuth and elevation to scatter point
             let (azimuth_geo, _) = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
                 range,
-                datetime.year(),
+                time.year(),
                 hdw,
                 grid_beam.first_range as f32,
                 grid_beam.range_sep as f32,
@@ -222,7 +222,7 @@ impl GridTable {
             let (mag_lat, mut mag_lon, mut azimuth_mag) = rpos_inv_mag(
                 grid_beam.beam,
                 range,
-                datetime.year(),
+                time.year(),
                 hdw,
                 grid_beam.first_range as f32,
                 grid_beam.range_sep as f32,
@@ -314,7 +314,8 @@ impl GridTable {
         chisham: bool,
         old_aacgm: bool,
     ) -> Result<(), GridError> {
-        let time = (&scan.start_time + &scan.end_time) / 2.0;
+        let time_micros = (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
+        let time = DateTime::from_timestamp_micros(time_micros).ok_or_else(|| GridError::InvalidFitacf("Invalid datetime for GridTable".to_string()))?;
         if self.status == 0 {
             self.status = 1;
             self.noise_mean = 0.0;
@@ -322,7 +323,7 @@ impl GridTable {
             self.freq = 0.0;
             self.num_scans = 0;
             self.start_time = scan.start_time.clone();
-            self.end_time = scan.start_time.clone() + tlen as f64;
+            self.end_time = scan.start_time.clone() + TimeDelta::seconds(tlen as i64);
             self.station_id = scan.station_id.clone();
         }
 
@@ -428,11 +429,6 @@ impl GridTable {
     pub fn to_dmap_record(&self) -> Result<GridRecord, GridError> {
         let mut grid_rec: IndexMap<String, DmapField> = IndexMap::new();
 
-        let start_time =
-            DateTime::from_timestamp_micros((self.start_time * 1000.0).floor() as i64).ok_or(
-                ProcdarnError::Timestamp(format!("Bad start_time {}", self.start_time)),
-            )?;
-
         // Find the valid points in the grid
         let valid_points: Vec<&GridPoint> = self.points.iter().filter(|&p| p.count > 0).collect();
         let num_points = valid_points.len();
@@ -463,111 +459,51 @@ impl GridTable {
 
         grid_rec.insert(
             "start_year".to_string(),
-            start_time
-                .format("%Y")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_year: {e}")))?
-                .into(),
+            (self.start_time.year() as i16).into(),
         );
         grid_rec.insert(
             "start_month".to_string(),
-            start_time
-                .format("%m")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_month: {e}")))?
-                .into(),
+            (self.start_time.month() as i16).into(),
         );
         grid_rec.insert(
             "start_day".to_string(),
-            start_time
-                .format("%d")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_day: {e}")))?
-                .into(),
+            (self.start_time.day() as i16).into(),
         );
         grid_rec.insert(
             "start_hour".to_string(),
-            start_time
-                .format("%H")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_hour: {e}")))?
-                .into(),
+            (self.start_time.hour() as i16).into(),
         );
         grid_rec.insert(
             "start_minute".to_string(),
-            start_time
-                .format("%M")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_minute: {e}")))?
-                .into(),
+            (self.start_time.minute() as i16).into(),
         );
         grid_rec.insert(
             "start_second".to_string(),
-            start_time
-                .format("%S.%.6f")
-                .to_string()
-                .parse::<f64>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("start_second: {e}")))?
-                .into(),
+            (self.start_time.second() as i16).into(),
         );
         grid_rec.insert(
             "end_year".to_string(),
-            start_time
-                .format("%Y")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_year: {e}")))?
-                .into(),
+            (self.end_time.year() as i16).into(),
         );
         grid_rec.insert(
             "end_month".to_string(),
-            start_time
-                .format("%m")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_month: {e}")))?
-                .into(),
+            (self.end_time.month() as i16).into(),
         );
         grid_rec.insert(
             "end_day".to_string(),
-            start_time
-                .format("%d")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_day: {e}")))?
-                .into(),
+            (self.end_time.day() as i16).into(),
         );
         grid_rec.insert(
             "end_hour".to_string(),
-            start_time
-                .format("%H")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_hour: {e}")))?
-                .into(),
+            (self.end_time.hour() as i16).into(),
         );
         grid_rec.insert(
             "end_minute".to_string(),
-            start_time
-                .format("%M")
-                .to_string()
-                .parse::<i16>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_minute: {e}")))?
-                .into(),
+            (self.end_time.minute() as i16).into(),
         );
         grid_rec.insert(
             "end_second".to_string(),
-            start_time
-                .format("%S.%.6f")
-                .to_string()
-                .parse::<f64>()
-                .map_err(|e| ProcdarnError::Timestamp(format!("end_second: {e}")))?
-                .into(),
+            (self.end_time.second() as i16).into(),
         );
         grid_rec.insert(
             "station_ids".to_string(),

@@ -1,3 +1,5 @@
+use chrono::{DateTime, TimeDelta, Utc};
+use crate::error::ProcdarnError;
 use crate::utils::scan::{RadarBeam, RadarCell, RadarScan};
 
 pub const MAX_BEAM: i32 = 256;
@@ -77,7 +79,7 @@ pub fn median_filter(
     param: i32,
     isort: bool,
     scans: &[RadarScan],
-) -> RadarScan {
+) -> Result<RadarScan, ProcdarnError> {
     let mut out_scan = RadarScan {
         ..Default::default()
     };
@@ -224,7 +226,7 @@ pub fn median_filter(
 
             // Initialize radar operating parameters
             b.program_id = -1;
-            b.time = 0.0;
+            b.time = DateTime::<Utc>::default();
             b.integration_time_s = 0;
             b.integration_time_us = 0;
             b.first_range = 0;
@@ -259,7 +261,9 @@ pub fn median_filter(
 
                     // Sum all the operating parameters, which will be averaged later once all beams
                     // have been added
-                    out_beam.time += in_beam.time;
+                    out_beam.time = out_beam.time.checked_add_signed(
+                        TimeDelta::seconds(in_beam.time.timestamp()) + TimeDelta::nanoseconds(in_beam.time.timestamp_micros() % 1000)
+                    ).ok_or_else(|| ProcdarnError::Timestamp("Could not add two grid times together without overflow".to_string()))?;
                     out_beam.integration_time_s += in_beam.integration_time_s;
                     out_beam.integration_time_us += in_beam.integration_time_us;
                     if out_beam.integration_time_us > 1_000_000 {
@@ -297,7 +301,7 @@ pub fn median_filter(
             // Corresponding beam in out_scan
             let out_beam = &mut out_scan.beams[beam_num];
 
-            out_beam.time = out_beam.time / count as f64;
+            out_beam.time = DateTime::<Utc>::from_timestamp_micros(out_beam.time.timestamp_micros() / count as i64).ok_or_else(|| ProcdarnError::Timestamp("Could not average beam timestamps".to_string()))?;
             out_beam.num_averages = out_beam.num_averages / count;
             out_beam.first_range = out_beam.first_range / count;
             out_beam.range_sep = out_beam.range_sep / count;
@@ -431,7 +435,7 @@ pub fn median_filter(
         }
     }
 
-    out_scan
+    Ok(out_scan)
 }
 
 /// Checks to make sure the radar operating parameters do not change significantly between scans.

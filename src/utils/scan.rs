@@ -1,3 +1,4 @@
+use chrono::{DateTime, TimeDelta, Utc};
 use crate::gridding::grid_table::GridTable;
 use crate::utils::rpos::slant_range;
 use crate::utils::sugar::get_datetime;
@@ -26,7 +27,7 @@ pub struct RadarBeam {
     pub scan: i32,                // scan in RST
     pub beam: i32,                // bm in RST
     pub beam_azimuth: f32,        // bmazm in RST
-    pub time: f64,                // time in RST
+    pub time: DateTime<Utc>,      // time in RST
     pub program_id: i32,          // cpid in RST
     pub integration_time_s: i32,  // intt.sc in RST
     pub integration_time_us: i32, // intt.us in RST
@@ -54,8 +55,8 @@ pub struct RadarScan {
     pub station_id: i32,       // stid in RST
     pub version_major: i32,    // version.major in RST
     pub version_minor: i32,    // version.minor in RST
-    pub start_time: f64,       // st_time in RST
-    pub end_time: f64,         // ed_time in RST
+    pub start_time: DateTime<Utc>,       // st_time in RST
+    pub end_time: DateTime<Utc>,         // ed_time in RST
     pub beams: Vec<RadarBeam>, // bm in RST
 }
 impl RadarScan {
@@ -128,7 +129,7 @@ impl RadarScan {
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("radar.revision.minor"))?,
-            start_time: get_datetime(rec)?.timestamp_micros() as f64,
+            start_time: get_datetime(rec)?,
             ..Default::default()
         };
 
@@ -136,7 +137,7 @@ impl RadarScan {
             rec = &fit_records[i];
 
             let mut beam = RadarBeam {
-                time: get_datetime(rec)?.timestamp_micros() as f64,
+                time: get_datetime(rec)?,
                 scan: i32::try_from(
                     rec.get(&"scan".to_string())
                         .ok_or(ProcdarnError::MissingField("scan"))?
@@ -319,13 +320,13 @@ impl RadarScan {
             scan.beams.push(beam);
 
             // Update the end time of the scan
-            scan.end_time = get_datetime(rec)?.timestamp_micros() as f64;
+            scan.end_time = get_datetime(rec)?;
 
             // Conditions for finding the end of the scan
             match scan_length {
                 // If the scan has spanned longer than scan_length
                 Some(x) => {
-                    if scan.end_time - scan.start_time >= x as f64 {
+                    if scan.end_time - scan.start_time >= TimeDelta::seconds(x as i64) {
                         break;
                     }
                 }

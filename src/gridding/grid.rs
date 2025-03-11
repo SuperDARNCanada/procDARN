@@ -1,3 +1,4 @@
+use std::os::raw::c_int;
 use crate::error::ProcdarnError;
 use crate::gridding::filter::{check_operational_params, median_filter};
 use crate::gridding::grid_table::GridTable;
@@ -5,7 +6,7 @@ use crate::utils::channel::{set_fix_channel, set_stereo_channel};
 use crate::utils::hdw::{HdwError, HdwInfo};
 use crate::utils::scan::RadarScan;
 use crate::utils::search::fit_seek;
-use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Timelike, Utc};
+use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::grid::GridRecord;
@@ -364,11 +365,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
             }
         };
 
-        let file_datetime =
-            DateTime::from_timestamp_micros((current_scans[index].start_time * 1000.0) as i64)
-                .ok_or_else(|| {
-                    GridError::InvalidFitacf(format!("Bad timestamp in first scan of {}", infile.display()))
-                })?;
+        let file_datetime = current_scans[index].start_time;
 
         println!("file starts at {file_datetime}"); // todo: remove
 
@@ -376,47 +373,18 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         let mut start_time = file_datetime;
         if !found_record {
             if let (None, None) = (&args.start_date, &args.start_time) {
-                match DateTime::<Utc>::from_timestamp_micros(
-                    (current_scans[0].start_time * 1000.0) as i64,
-                ) {
-                    Some(t) => {
-                        start_time = t;
-                    }
-                    None => {
-                        return Err(GridError::InvalidFitacf(format!(
-                            "Invalid timestamp in first scan of file {}", infile.display()
-                        )))
-                    }
-                }
+                start_time = current_scans[0].start_time;
                 found_record = true;
             } else {
                 let date_string = match &args.start_date {
                     Some(d) => d.clone(),
-                    None => DateTime::<Utc>::from_timestamp_micros(
-                        (current_scans[0].start_time * 1000.0) as i64,
-                    )
-                    .ok_or_else(|| {
-                        GridError::InvalidFitacf(format!(
-                            "Bad timestamp in first record of {}", infile.display()
-                        ))
-                    })?
-                    .format("%Y%m%d")
-                    .to_string(),
+                    None => current_scans[0].start_time.format("%Y%m%d").to_string()
                 };
 
                 let time_string = match &args.start_time {
                     Some(t) => format!("{}", t),
                     // The None branch truncates back to the start of the minute
-                    None => DateTime::<Utc>::from_timestamp_micros(
-                        (current_scans[0].start_time * 1000.0).floor() as i64,
-                    )
-                    .ok_or_else(|| {
-                        ProcdarnError::Timestamp(format!(
-                            "Bad timestamp in first record of {}", infile.display()
-                        ))
-                    })?
-                    .format("%H:%M")
-                    .to_string(),
+                    None => current_scans[0].start_time.format("%H:%M").to_string(),
                 };
 
                 start_time = NaiveDateTime::parse_from_str(
@@ -429,7 +397,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     )
                 })?
                 .and_utc();
-
+                println!("start_time: {start_time}");
                 // If applying boxcar median filter then we need to load data prior to the usual start
                 // time, so start_time needs to be adjusted
                 if num_averages > 1 {
@@ -442,16 +410,8 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                             })?
                         }
                         None => {
-                            start_time -= TimeDelta::new(
-                                (15.0 + current_scans[0].end_time - current_scans[0].start_time)
-                                    .floor() as i64,
-                                0,
-                            )
-                            .ok_or_else(|| {
-                                ProcdarnError::Timestamp(
-                                    "Out of bounds duration when adjusting start_time".to_string(),
-                                )
-                            })?
+                            let td = current_scans[0].end_time - current_scans[0].start_time + TimeDelta::seconds(15);
+                            start_time -= td;
                         }
                     }
                 }
@@ -515,14 +475,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     let time_string = format!("{}", t);
                     let date_string = match &args.end_date {
                         Some(d) => format!("{}", d),
-                        None => DateTime::<Utc>::from_timestamp_micros(
-                            (current_scans[0].start_time * 1000.0).floor() as i64,
-                        )
-                        .ok_or(ProcdarnError::Timestamp(
-                            "Invalid start_time from first record".to_string(),
-                        ))?
-                        .format("%Y%m%d")
-                        .to_string(),
+                        None => current_scans[0].start_time.format("%Y%m%d").to_string(),
                     };
                     NaiveDateTime::parse_from_str(
                         format!("{} {}", date_string, time_string).as_str(),
@@ -537,7 +490,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 }
                 None => match &args.interval {
                     Some(x) => {
-                        let dt = NaiveTime::parse_from_str(x, "%H:%M")?.time();
+                        let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
                         let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
                         start_time + dur
                     }
@@ -551,14 +504,16 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
             found_record = false
         }
 
-        let year = start_time.year();
-        let month = start_time.month() as i32;
-        let day = start_time.day() as i32;
+        let year = start_time.year() as c_int;
+        let month = start_time.month() as c_int;
+        let day = start_time.day() as c_int;
+        println!("start_time: {year}, {month}, {day}");
         println!("Setting AACGM_v2 time"); // todo: remove
         unsafe {
-            aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
+            // aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
+            aacgmv2_rs::AACGM_v2_SetNow();
         }
-
+        println!("AACGM_v2 time set");
         num_scans += 1;
 
         // Grid all data until end of gridding time or end of file
@@ -614,7 +569,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                         15,
                         args.sort_params_flag,
                         &current_scans,
-                    ),
+                    )?,
                 };
 
                 // If not already done, load HdwInfo for radar
@@ -626,7 +581,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 // Test whether the grid table should be written to file
                 if grid_table.test(&grid_record) {
                     // If GridTable good and grid record starts at or after start_time, write to file
-                    if grid_table.start_time >= start_time.timestamp() as f64 {
+                    if grid_table.start_time >= start_time {
                         records_for_file.push(grid_table.to_dmap_record()?);
                     }
                 }
@@ -657,7 +612,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
             current_scans[index] = this_scan?.clone();
 
             // If scan starts after end_time, this file is done being gridded
-            if current_scans[index].start_time > end_time.timestamp() as f64 {
+            if current_scans[index].start_time > end_time {
                 break;
             }
 
