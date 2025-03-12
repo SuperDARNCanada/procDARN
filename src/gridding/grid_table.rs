@@ -164,18 +164,18 @@ impl GridTable {
     /// Returns the index of the pointer to a newly added grid cell in the structure
     /// storing gridded radar data.
     /// Called GridTableAddPoint in RST
-    // pub fn add_point
+    pub fn add_point(&mut self) -> usize {
+        self.points.push(GridPoint::default());
+        self.num_points_pnum += 1;
+        self.points.len() - 1
+    }
 
     /// Returns the index of the point in the table whose reference number matches the input.
     /// Called GridTableFindPoint in RST
-    pub fn find_point(&self, reference: i32) -> Result<usize, GridError> {
+    pub fn find_point(&self, reference: i32) -> Option<usize> {
         self.points
             .iter()
             .position(|x| x.reference == reference)
-            .ok_or(GridError::InvalidFitacf(format!(
-                "Point {} not in grid table",
-                reference
-            )))
     }
 
     /// Adds a grid beam to the grid table.
@@ -205,6 +205,7 @@ impl GridTable {
         };
 
         for range in 0..grid_beam.num_ranges {
+            println!("rpos_range_beam_az_el starting on range {range}");
             // Calculate geographic azimuth and elevation to scatter point
             let (azimuth_geo, _) = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
@@ -217,9 +218,9 @@ impl GridTable {
                 altitude,
                 chisham,
             )?;
-
+            println!("rpos_inv_mag on range {range} starting");
             // Calculate magnetic latitude, longitude, and azimuth of scatter point
-            let (mag_lat, mut mag_lon, mut azimuth_mag) = rpos_inv_mag(
+            let (mut mag_loc, mut azimuth_mag) = rpos_inv_mag(
                 grid_beam.beam,
                 range,
                 time.year(),
@@ -236,49 +237,54 @@ impl GridTable {
             if azimuth_mag < 0.0 {
                 azimuth_mag += 360.0;
             }
-            if mag_lon < 0.0 {
-                mag_lon += 360.0;
+            if mag_loc[0] < 0.0 {
+                mag_loc[0] += 2.0 * PI as f64;
             }
 
             // Calculate magnetic grid cell latitude, (e.g. 72.1->72.5, 57.8->57.5, etc)
             let grid_lat: f32;
-            if mag_lat > 0.0 {
-                grid_lat = mag_lat.floor() + 0.5;
+            if mag_loc[1] > 0.0 {
+                grid_lat = mag_loc[1].to_degrees().floor() as f32 + 0.5;
             } else {
-                grid_lat = mag_lat.floor() - 0.5;
+                grid_lat = mag_loc[1].to_degrees().floor() as f32 - 0.5;
             }
 
             // Calculate magnetic grid longitude spacing at grid latitude
             let lon_spacing = (360.0 * grid_lat.abs().to_radians().cos() + 0.5).floor() / 360.0;
 
             // Calculate magnetic grid cell longitude
-            let _grid_lon = (mag_lon * lon_spacing + 0.5) / lon_spacing;
+            let _grid_lon = (mag_loc[0].to_degrees() as f32 * lon_spacing + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
             let reference: i32;
-            if mag_lat > 0.0 {
-                reference = (1000.0 * mag_lat.floor() + (mag_lon * lon_spacing).floor()) as i32;
+            if mag_loc[1] > 0.0 {
+                reference = (1000.0 * mag_loc[1].to_degrees().floor() as f32 + (mag_loc[0].to_degrees() as f32 * lon_spacing).floor()) as i32;
             } else {
                 reference =
-                    (-1000.0 * (-1.0 * mag_lat).floor() - (mag_lon * lon_spacing).floor()) as i32;
+                    (-1000.0 * (-1.0 * mag_loc[1].to_degrees()).floor() as f32 - (mag_loc[0].to_degrees() as f32 * lon_spacing).floor()) as i32;
             }
 
             // Find GridPoint corresponding to reference number for cell, make new GridPoint if none found
-            let index = self.find_point(reference)?;
+            let index = match self.find_point(reference) {
+                Some(x) => x,
+                None => self.add_point(),
+            };
             let point = &mut self.points[index];
 
             // Update the total number of range gates that map to GridPoint (GridPoint.max)
             point.reference = reference;
+            point.count += 1;
 
             // Set magnetic lat/lon for GridPoint
-            point.magnetic_lat = mag_lat;
-            point.magnetic_lon = mag_lon;
+            point.magnetic_lat = mag_loc[1].to_degrees() as f32;
+            point.magnetic_lon = mag_loc[0].to_degrees() as f32;
 
             // Set index, magnetic azimuth, inertial velocity correction factor of beam
-            grid_beam.index[range as usize] = index as i32;
-            grid_beam.azimuth[range as usize] = azimuth_mag;
-            grid_beam.ival[range as usize] =
-                velocity_correction * (PI * (azimuth_geo + 90.0) / 180.0).cos();
+            grid_beam.index.push(index as i32);
+            grid_beam.azimuth.push(azimuth_mag);
+            grid_beam.ival.push(
+                velocity_correction * (azimuth_geo + 90.0).to_radians().cos()
+            );
         }
         self.beams.push(grid_beam);
         // Return index of beam number added to self
@@ -327,14 +333,11 @@ impl GridTable {
         println!("\n\nscan: {:?}", scan);
         println!("\n\nself: {:?}", self);
         for scan_beam in scan.beams.iter() {
-            let mut beam_index: usize = 0;
-            if scan_beam.beam != -1 {
-                beam_index = match self.find_beam(scan_beam) {
-                    Some(i) => i,
-                    None => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
-                };
-            }
-
+            if scan_beam.beam == -1 { continue; }
+            let beam_index = match self.find_beam(scan_beam) {
+                Some(i) => i,
+                None => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
+            };
             let grid_beam = &self.beams[beam_index];
 
             for range in 0..scan_beam.num_ranges.clone() as usize {
@@ -365,18 +368,18 @@ impl GridTable {
                 if iflg {
                     grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
-                        * (grid_beam.azimuth[range] * PI / 180.).cos()
+                        * grid_beam.azimuth[range].to_radians().cos()
                         / (velocity_error * velocity_error);
                     grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
-                        * (grid_beam.azimuth[range] * PI / 180.).sin()
+                        * grid_beam.azimuth[range].to_radians().sin()
                         / (velocity_error * velocity_error);
                 } else {
                     grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
-                        * (grid_beam.azimuth[range] * PI / 180.).cos()
+                        * grid_beam.azimuth[range].to_radians().cos()
                         / (velocity_error * velocity_error);
                     grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
-                        * (grid_beam.azimuth[range] * PI / 180.).sin()
+                        * grid_beam.azimuth[range].to_radians().sin()
                         / (velocity_error * velocity_error);
                 }
 
