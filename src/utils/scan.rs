@@ -105,7 +105,7 @@ impl RadarScan {
     pub fn get_first_scan(
         fit_records: &[FitacfRecord],
         scan_length: Option<u32>,
-    ) -> Result<RadarScan, ProcdarnError> {
+    ) -> Result<(RadarScan, usize), ProcdarnError> {
         if fit_records.len() == 0 {
             return Err(ProcdarnError::ZeroRecords("in `get_first_scan()`"));
         }
@@ -133,7 +133,8 @@ impl RadarScan {
             ..Default::default()
         };
 
-        for i in 0..fit_records.len() {
+        let mut i = 0;
+        while i < fit_records.len() {
             rec = &fit_records[i];
 
             let mut beam = RadarBeam {
@@ -267,7 +268,7 @@ impl RadarScan {
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("v_e"))?;
-            let quality_flag = ArrayD::try_from(
+            let quality_flag: ArrayD<i8> = ArrayD::try_from(
                 rec.get(&"qflg".to_string())
                     .ok_or(ProcdarnError::MissingField("qflg"))?
                     .clone(),
@@ -285,7 +286,7 @@ impl RadarScan {
                 let slist_idx = slist.iter().position(|&x: &i16| x as usize == r);
                 let cell = match slist_idx {
                     Some(idx) => {
-                        beam.scatter.push(quality_flag[idx]);
+                        beam.scatter.push(if quality_flag[idx] == 1 { 1 } else { 0 });
                         let mut cell_tmp = RadarCell {
                             groundscatter: groundscatter[idx],
                             power_lag_zero: power_lag_zero[idx],
@@ -322,6 +323,9 @@ impl RadarScan {
             // Update the end time of the scan
             scan.end_time = get_datetime(rec)?;
 
+            // Increment the record index
+            i += 1;
+
             // Conditions for finding the end of the scan
             match scan_length {
                 // If the scan has spanned longer than scan_length
@@ -332,9 +336,9 @@ impl RadarScan {
                 }
                 // If the next record is the start of a new scan
                 None => {
-                    if i < fit_records.len() - 1
+                    if i < fit_records.len()
                         && i8::try_from(
-                            fit_records[i + 1]
+                            fit_records[i]
                                 .get(&"scan".to_string())
                                 .ok_or(ProcdarnError::MissingField("scan"))?
                                 .clone(),
@@ -348,7 +352,7 @@ impl RadarScan {
                 }
             }
         }
-        Ok(scan)
+        Ok((scan, i))
     }
 
     /// Filters data in the scan based on optional min and max range gates or slant ranges.

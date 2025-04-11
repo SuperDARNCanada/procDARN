@@ -345,7 +345,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
     let mut end_time: DateTime<Utc> = DateTime::default();
     let hdw_info: Option<HdwInfo> = None;
     let mut records_for_file: Vec<GridRecord> = vec![];
-    let mut this_scan: Result<RadarScan, ProcdarnError>;
     let mut found_scan: bool;
 
     for infile in args.infiles.clone().into_iter() {
@@ -354,7 +353,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
         // Get the first scan from the file
         match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
-            Ok(x) => {
+            Ok((x, _)) => {
                 println!("current_scans: len({}), index={index}", current_scans.len());
                 current_scans[index] = x;
                 found_scan = true;
@@ -465,7 +464,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 let this_scan =
                     RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length);
                 found_scan = this_scan.is_ok();
-                current_scans[0] = this_scan?.clone();
+                current_scans[0] = this_scan?.0;
             }
         }
 
@@ -516,13 +515,13 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         while found_scan {
             // Exclude scatter in beams listed in args.exclude_beams
             if let Some(b) = &args.exclude_beams {
-                println!("excluding beams {:?}", &args.exclude_beams);
+                eprintln!("excluding beams {:?}", &args.exclude_beams);
                 current_scans[index].reset_beams(b)?;
             }
 
             // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
             if args.exclude_neg_scan_flag {
-                println!("excluding data with negative scan flag");
+                eprintln!("excluding data with negative scan flag");
                 current_scans[index].exclude_outofscan();
             }
 
@@ -536,16 +535,16 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
             // Exclude groundscatter or ionospheric scatter, depending on the args given
             if args.groundscatter_only_flag {
-                println!("excluding ionospheric scatter");
+                eprintln!("excluding ionospheric scatter");
                 current_scans[index].exclude_ionospheric_scatter();
             } else if args.ionosphere_only_flag {
-                println!("excluding ground scatter");
+                eprintln!("excluding ground scatter");
                 current_scans[index].exclude_groundscatter();
             }
 
             // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
             if !args.no_limits_flag {
-                println!("Excluding out of bounds");
+                eprintln!("Excluding out of bounds");
                 current_scans[index].exclude_outofbounds(&grid_table);
             }
 
@@ -559,7 +558,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 passed_check = check_operational_params(&current_scans, args.max_frequency_var);
             }
 
-            println!("current_scans[{index}]: {:?}\n\n", current_scans[index]);
             // If enough scans have been loaded, proceed with filtering and gridding
             if passed_check && num_scans >= current_scans.capacity() {
                 let grid_record = match filter_weighting_mode {
@@ -573,8 +571,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                         &current_scans,
                     )?,
                 };
-
-                println!("grid_record: {grid_record:?}");
 
                 // If not already done, load HdwInfo for radar
                 let hdw_params = match hdw_info {
@@ -610,16 +606,24 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
             // Get the next scan
             let start_idx = record_idx.unwrap_or_else(|| 0);
-
-            this_scan = RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
-            found_scan = this_scan.is_ok();
-            current_scans[index] = this_scan?.clone();
+            let scan_res = RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
+            match scan_res {
+                Ok((new_scan, num_read)) => {
+                    found_scan = true;
+                    current_scans[index] = new_scan;
+                    record_idx = Some(start_idx + num_read);
+                },
+                Err(ProcdarnError::ZeroRecords(_)) => {
+                    found_scan = false;
+                    record_idx = None;
+                },
+                Err(e) => Err(e)?
+            };
 
             // If scan starts after end_time, this file is done being gridded
             if current_scans[index].start_time > end_time {
                 break;
             }
-
             num_scans += 1;
         }
     }

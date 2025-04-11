@@ -33,10 +33,10 @@ pub enum ProcdarnError {
     WrongType(&'static str),
 
     /// Zero records available
-    #[error("{0}")]
+    #[error("zero records {0}")]
     ZeroRecords(&'static str),
 
     /// Invalid channel specifier
-    #[error("{0}")]
+    #[error("invalid channel `{0}`")]
     Channel(String),
 }

@@ -205,7 +205,6 @@ impl GridTable {
         };
 
         for range in 0..grid_beam.num_ranges {
-            println!("rpos_range_beam_az_el starting on range {range}");
             // Calculate geographic azimuth and elevation to scatter point
             let (azimuth_geo, _) = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
@@ -218,7 +217,6 @@ impl GridTable {
                 altitude,
                 chisham,
             )?;
-            println!("rpos_inv_mag on range {range} starting");
             // Calculate magnetic latitude, longitude, and azimuth of scatter point
             let (mut mag_loc, mut azimuth_mag) = rpos_inv_mag(
                 grid_beam.beam,
@@ -330,8 +328,6 @@ impl GridTable {
             self.station_id = scan.station_id.clone();
         }
 
-        println!("\n\nscan: {:?}", scan);
-        println!("\n\nself: {:?}", self);
         for scan_beam in scan.beams.iter() {
             if scan_beam.beam == -1 { continue; }
             let beam_index = match self.find_beam(scan_beam) {
@@ -460,63 +456,63 @@ impl GridTable {
             .collect();
 
         grid_rec.insert(
-            "start_year".to_string(),
+            "start.year".to_string(),
             (self.start_time.year() as i16).into(),
         );
         grid_rec.insert(
-            "start_month".to_string(),
+            "start.month".to_string(),
             (self.start_time.month() as i16).into(),
         );
         grid_rec.insert(
-            "start_day".to_string(),
+            "start.day".to_string(),
             (self.start_time.day() as i16).into(),
         );
         grid_rec.insert(
-            "start_hour".to_string(),
+            "start.hour".to_string(),
             (self.start_time.hour() as i16).into(),
         );
         grid_rec.insert(
-            "start_minute".to_string(),
+            "start.minute".to_string(),
             (self.start_time.minute() as i16).into(),
         );
         grid_rec.insert(
-            "start_second".to_string(),
+            "start.second".to_string(),
             (self.start_time.second() as i16).into(),
         );
         grid_rec.insert(
-            "end_year".to_string(),
+            "end.year".to_string(),
             (self.end_time.year() as i16).into(),
         );
         grid_rec.insert(
-            "end_month".to_string(),
+            "end.month".to_string(),
             (self.end_time.month() as i16).into(),
         );
         grid_rec.insert(
-            "end_day".to_string(),
+            "end.day".to_string(),
             (self.end_time.day() as i16).into(),
         );
         grid_rec.insert(
-            "end_hour".to_string(),
+            "end.hour".to_string(),
             (self.end_time.hour() as i16).into(),
         );
         grid_rec.insert(
-            "end_minute".to_string(),
+            "end.minute".to_string(),
             (self.end_time.minute() as i16).into(),
         );
         grid_rec.insert(
-            "end_second".to_string(),
+            "end.second".to_string(),
             (self.end_time.second() as i16).into(),
         );
         grid_rec.insert(
-            "station_ids".to_string(),
+            "stid".to_string(),
             array![self.station_id].into_dyn().into(),
         );
         grid_rec.insert(
-            "channels".to_string(),
+            "channel".to_string(),
             array![self.channel].into_dyn().into(),
         );
         grid_rec.insert(
-            "num_vectors".to_string(),
+            "nvec".to_string(),
             array![num_points as i16].into_dyn().into(),
         );
         grid_rec.insert(
@@ -524,107 +520,107 @@ impl GridTable {
             array![self.freq as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "grid_major_revision".to_string(),
+            "major.revision".to_string(),
             array![GRID_REVISION_MAJOR as i16].into_dyn().into(),
         );
         grid_rec.insert(
-            "grid_minor_revision".to_string(),
+            "minor.revision".to_string(),
             array![GRID_REVISION_MINOR as i16].into_dyn().into(),
         );
         grid_rec.insert(
-            "program_ids".to_string(),
+            "program.id".to_string(),
             array![self.program_id as i16].into_dyn().into(),
         );
         grid_rec.insert(
-            "noise_mean".to_string(),
+            "noise.mean".to_string(),
             array![self.noise_mean as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "noise_stddev".to_string(),
+            "noise.sd".to_string(),
             array![self.noise_stddev as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "groundscatter".to_string(),
+            "gsct".to_string(),
             array![self.groundscatter as i16].into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_min".to_string(),
+            "v.min".to_string(),
             array![self.min_velocity as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_max".to_string(),
+            "v.max".to_string(),
             array![self.max_velocity as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "power_min".to_string(),
+            "p.min".to_string(),
             array![self.min_power as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "power_max".to_string(),
+            "p.max".to_string(),
             array![self.min_power as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "spectral_width_min".to_string(),
+            "w.min".to_string(),
             array![self.min_spectral_width as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "spectral_width_max".to_string(),
+            "w.max".to_string(),
             array![self.max_spectral_width as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_error_min".to_string(),
+            "ve.min".to_string(),
             array![self.min_velocity_error as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_error_max".to_string(),
+            "ve.max".to_string(),
             array![self.max_velocity_error as f32].into_dyn().into(),
         );
         grid_rec.insert(
-            "magnetic_lat".to_string(),
+            "vector.mlat".to_string(),
             Array::from_vec(magnetic_lat).into_dyn().into(),
         );
         grid_rec.insert(
-            "magnetic_lon".to_string(),
+            "vector.mlon".to_string(),
             Array::from_vec(magnetic_lon).into_dyn().into(),
         );
         grid_rec.insert(
-            "magnetic_azi".to_string(),
+            "vector.kvect".to_string(),
             Array::from_vec(azimuth).into_dyn().into(),
         );
         grid_rec.insert(
-            "station_id_vector".to_string(),
+            "vector.stid".to_string(),
             Array::from_vec(station_ids).into_dyn().into(),
         );
         grid_rec.insert(
-            "channel_vector".to_string(),
+            "vector.channel".to_string(),
             Array::from_vec(channels).into_dyn().into(),
         );
         grid_rec.insert(
-            "grid_cell_index".to_string(),
+            "vector.index".to_string(),
             Array::from_vec(index).into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_median".to_string(),
+            "vector.vel.median".to_string(),
             Array::from_vec(velocity_median).into_dyn().into(),
         );
         grid_rec.insert(
-            "velocity_stddev".to_string(),
+            "vector.vel.sd".to_string(),
             Array::from_vec(velocity_stddev).into_dyn().into(),
         );
         grid_rec.insert(
-            "power_median".to_string(),
+            "vector.pwr.median".to_string(),
             Array::from_vec(power_median).into_dyn().into(),
         );
         grid_rec.insert(
-            "power_stddev".to_string(),
+            "vector.pwr.sd".to_string(),
             Array::from_vec(power_stddev).into_dyn().into(),
         );
         grid_rec.insert(
-            "spectral_width_median".to_string(),
+            "vector.wdt.median".to_string(),
             Array::from_vec(spectral_width_median).into_dyn().into(),
         );
         grid_rec.insert(
-            "spectral_width_stddev".to_string(),
+            "vector.wdt.sd".to_string(),
             Array::from_vec(spectral_width_stddev).into_dyn().into(),
         );
 

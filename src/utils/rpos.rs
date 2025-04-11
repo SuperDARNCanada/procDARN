@@ -350,7 +350,7 @@ fn fieldpoint_height(
         // Obtain the global spherical coordinates of the field point
         let point_sph_new = fieldpoint(
             &radar_geo,
-            &Coor3D::raw(adjusted_point[0], adjusted_point[1], range),
+            &Coor3D::raw(adjusted_point[0], angle_above_horizon, range),
         );
         if point_sph_new == point_sph {
             panic!("stagnation!!")
@@ -363,7 +363,6 @@ fn fieldpoint_height(
         earth_rad_under_point = geodetic[2];
 
         point_height = (point_sph[2] - earth_rad_under_point) as f32;
-        println!("point_height residual: {}, point_sph: {point_sph:?}", point_height - virtual_height);
     }
 
     Ok(point_sph)
@@ -414,7 +413,6 @@ fn rpos_geo(
         range_edge as i32,
         range_gate,
     );
-    println!("rpos_geo slant_range: {distance}");
     // If the input altitude is below 90, then it is actually an input elevation angle in degrees.
     // If so, we calculate the field point height
     let field_point_height = if altitude < 90.0 {
@@ -466,7 +464,6 @@ pub fn rpos_range_beam_azimuth_elevation(
 
     // let ellipse = Ellipsoid::named("WGS84")?;
 
-    println!("calling rpos_geo in rpos_range_beam...");
     // Convert center of range/beam cell to geocentric latitude/longitude/altitude
     let cell_geoc = rpos_geo(
         true,
@@ -500,7 +497,6 @@ pub fn rpos_range_beam_azimuth_elevation(
     // Normalize the local horizontal vector
     let mut normed_local_del = norm_vector(&local_del);
 
-    println!("calculating declination in rpos_range_beam...");
     // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
     let igrf_field = declination(
         cell_geoc[1],
