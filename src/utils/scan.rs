@@ -1,11 +1,11 @@
-use chrono::{DateTime, TimeDelta, Utc};
+use crate::error::ProcdarnError;
+use crate::gridding::grid::GridError;
 use crate::gridding::grid_table::GridTable;
 use crate::utils::rpos::slant_range;
 use crate::utils::sugar::get_datetime;
+use chrono::{DateTime, TimeDelta, Utc};
 use dmap::formats::fitacf::FitacfRecord;
-use numpy::ndarray::ArrayD;
-use crate::error::ProcdarnError;
-use crate::gridding::grid::GridError;
+use numpy::ndarray::{Array, ArrayD};
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct RadarCell {
@@ -52,12 +52,12 @@ impl RadarBeam {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarScan {
-    pub station_id: i32,       // stid in RST
-    pub version_major: i32,    // version.major in RST
-    pub version_minor: i32,    // version.minor in RST
-    pub start_time: DateTime<Utc>,       // st_time in RST
-    pub end_time: DateTime<Utc>,         // ed_time in RST
-    pub beams: Vec<RadarBeam>, // bm in RST
+    pub station_id: i32,           // stid in RST
+    pub version_major: i32,        // version.major in RST
+    pub version_minor: i32,        // version.minor in RST
+    pub start_time: DateTime<Utc>, // st_time in RST
+    pub end_time: DateTime<Utc>,   // ed_time in RST
+    pub beams: Vec<RadarBeam>,     // bm in RST
 }
 impl RadarScan {
     /// Clears the beams
@@ -83,6 +83,8 @@ impl RadarScan {
     pub fn add_beam(&mut self, num_ranges: i32) {
         self.beams.push(RadarBeam {
             num_ranges,
+            scatter: vec![0; num_ranges as usize],
+            cells: vec![RadarCell::default(); num_ranges as usize],
             ..Default::default()
         })
     }
@@ -231,12 +233,12 @@ impl RadarScan {
                 .map_err(|_| ProcdarnError::WrongType("nrang"))?,
                 ..Default::default()
             };
-            let groundscatter = ArrayD::try_from(
-                rec.get(&"gflg".to_string())
-                    .ok_or(ProcdarnError::MissingField("gflg"))?
-                    .clone(),
-            )
-            .map_err(|e| ProcdarnError::Channel(format!("gflg - {e}")))?;
+            let groundscatter = match rec.get(&"gflg".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("gflg"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
             let power_lag_zero = ArrayD::try_from(
                 rec.get(&"pwr0".to_string())
                     .ok_or(ProcdarnError::MissingField("pwr0"))?
@@ -244,49 +246,50 @@ impl RadarScan {
             )
             .map_err(|_| ProcdarnError::WrongType("pwr0"))?;
             let power_error_lag_zero = 0.0;
-            let velocity = ArrayD::try_from(
-                rec.get(&"v".to_string())
-                    .ok_or(ProcdarnError::MissingField("v"))?
-                    .clone(),
-            )
-            .map_err(|_| ProcdarnError::WrongType("v"))?;
-            let power_lin = ArrayD::try_from(
-                rec.get(&"p_l".to_string())
-                    .ok_or(ProcdarnError::MissingField("p_l"))?
-                    .clone(),
-            )
-            .map_err(|_| ProcdarnError::WrongType("p_l"))?;
-            let spectral_width_lin = ArrayD::try_from(
-                rec.get(&"w_l".to_string())
-                    .ok_or(ProcdarnError::MissingField("w_l"))?
-                    .clone(),
-            )
-            .map_err(|_| ProcdarnError::WrongType("w_l"))?;
-            let velocity_error = ArrayD::try_from(
-                rec.get(&"v_e".to_string())
-                    .ok_or(ProcdarnError::MissingField("v_e"))?
-                    .clone(),
-            )
-            .map_err(|_| ProcdarnError::WrongType("v_e"))?;
-            let quality_flag: ArrayD<i8> = ArrayD::try_from(
-                rec.get(&"qflg".to_string())
-                    .ok_or(ProcdarnError::MissingField("qflg"))?
-                    .clone(),
-            )
-            .map_err(|_| ProcdarnError::WrongType("qflg"))?;
-            let slist = ArrayD::try_from(
-                rec.get(&"slist".to_string())
-                    .ok_or(ProcdarnError::MissingField("slist"))?
-                    .clone(),
-            )
-                .map_err(|_| ProcdarnError::WrongType("slist"))?;
+            let velocity = match rec.get(&"v".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("v"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
+            let power_lin = match rec.get(&"p_l".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("p_l"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
+            let spectral_width_lin = match rec.get(&"w_l".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("w_l"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
+            let velocity_error = match rec.get(&"v_e".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("v_e"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
+            let quality_flag: ArrayD<i8> = match rec.get(&"qflg".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("qflg"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
+            let slist = match rec.get(&"slist".to_string()) {
+                Some(x) => {
+                    ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("slist"))?
+                }
+                None => Array::zeros((0,)).into_dyn(),
+            };
             let lag_zero_phi = rec.get(&"phi0".to_string());
             let elevation = rec.get(&"elv".to_string());
             for r in 0..beam.num_ranges as usize {
                 let slist_idx = slist.iter().position(|&x: &i16| x as usize == r);
                 let cell = match slist_idx {
                     Some(idx) => {
-                        beam.scatter.push(if quality_flag[idx] == 1 { 1 } else { 0 });
+                        beam.scatter
+                            .push(if quality_flag[idx] == 1 { 1 } else { 0 });
                         let mut cell_tmp = RadarCell {
                             groundscatter: groundscatter[idx],
                             power_lag_zero: power_lag_zero[idx],
@@ -306,11 +309,11 @@ impl RadarScan {
                                 .map_err(|_| ProcdarnError::WrongType("elv"))?[idx]
                         }
                         cell_tmp
-                    },
+                    }
                     None => {
                         beam.scatter.push(0);
                         RadarCell::default()
-                    },
+                    }
                 };
 
                 // Add the measurement (RadarCell) to the beam
@@ -364,7 +367,6 @@ impl RadarScan {
         min_slant_range: Option<f32>,
         max_slant_range: Option<f32>,
     ) {
-        println!("Excluding ranges outside [{min_range_gate:?}, {max_range_gate:?}] and slant range outside [{min_slant_range:?}, {max_slant_range:?}]");
         let range_edge = 0;
         for beam in self.beams.iter_mut().filter(|b| b.beam != -1) {
             // If either min or max slant range given, then exclude data using slant range filters

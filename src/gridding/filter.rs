@@ -1,6 +1,6 @@
-use chrono::{DateTime, TimeDelta, Utc};
 use crate::error::ProcdarnError;
 use crate::utils::scan::{RadarBeam, RadarCell, RadarScan};
+use chrono::{DateTime, TimeDelta, Utc};
 
 pub const MAX_BEAM: i32 = 256;
 pub const FILTER_HEIGHT: usize = 3;
@@ -97,7 +97,7 @@ pub fn median_filter(
     // Find the largest beam number and range number in all the scans
     for i in 0..filter_depth {
         for beam in scans[i].beams.iter() {
-            if beam.beam > max_beam {
+            if beam.beam >= max_beam {
                 max_beam = beam.beam + 1; // Add one since beam number is indexed from 0
             }
             if beam.num_ranges as usize > max_range {
@@ -147,16 +147,9 @@ pub fn median_filter(
     for beam in 0..max_beam as usize {
         out_scan.add_beam(max_range as i32);
         out_scan.beams[beam].beam = -1;
-
-        let mut beam_vec = vec![];
-        // Initialize some vectors for storing observations along a beam direction
-        for _ in 0..depth {
-            // Adding an empty vector for this depth, containing an empty vector for the points
-            beam_vec.push(vec![]);
-        }
-        beam_pointers.push(beam_vec);
-        // beam_pointers should now be [max_beams, depth, 0], where the last dimension is an empty Vec
+        beam_pointers.push(vec![vec![]; depth as usize]);
     }
+    // beam_pointers should now be [max_beams, depth, 0], where the last dimension is an empty Vec
 
     for z in 0..depth as usize {
         // Figure out if this scan is the current, previous, or next scan
@@ -263,9 +256,18 @@ pub fn median_filter(
 
                     // Sum all the operating parameters, which will be averaged later once all beams
                     // have been added
-                    out_beam.time = out_beam.time.checked_add_signed(
-                        TimeDelta::seconds(in_beam.time.timestamp()) + TimeDelta::nanoseconds(in_beam.time.timestamp_micros() % 1000)
-                    ).ok_or_else(|| ProcdarnError::Timestamp("Could not add two grid times together without overflow".to_string()))?;
+                    out_beam.time = out_beam
+                        .time
+                        .checked_add_signed(
+                            TimeDelta::seconds(in_beam.time.timestamp())
+                                + TimeDelta::nanoseconds(in_beam.time.timestamp_micros() % 1000),
+                        )
+                        .ok_or_else(|| {
+                            ProcdarnError::Timestamp(
+                                "Could not add two grid times together without overflow"
+                                    .to_string(),
+                            )
+                        })?;
                     out_beam.integration_time_s += in_beam.integration_time_s;
                     out_beam.integration_time_us += in_beam.integration_time_us;
                     if out_beam.integration_time_us > 1_000_000 {
@@ -299,11 +301,20 @@ pub fn median_filter(
             for z in 0..depth as usize {
                 count += beam_pointers[beam_num][z].len() as i32;
             }
+            // If this beam wasn't sampled, continue to the next one
+            if count == 0 {
+                continue;
+            }
 
             // Corresponding beam in out_scan
             let out_beam = &mut out_scan.beams[beam_num];
 
-            out_beam.time = DateTime::<Utc>::from_timestamp_micros(out_beam.time.timestamp_micros() / count as i64).ok_or_else(|| ProcdarnError::Timestamp("Could not average beam timestamps".to_string()))?;
+            out_beam.time = DateTime::<Utc>::from_timestamp_micros(
+                out_beam.time.timestamp_micros() / count as i64,
+            )
+            .ok_or_else(|| {
+                ProcdarnError::Timestamp("Could not average beam timestamps".to_string())
+            })?;
             out_beam.num_averages = out_beam.num_averages / count;
             out_beam.first_range = out_beam.first_range / count;
             out_beam.range_sep = out_beam.range_sep / count;

@@ -2,7 +2,7 @@ use crate::gridding::grid::GridError;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
-use chrono::{DateTime, Datelike, Utc, TimeDelta, Timelike};
+use chrono::{DateTime, Datelike, TimeDelta, Timelike, Utc};
 use dmap::formats::grid::GridRecord;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
@@ -64,30 +64,30 @@ impl GridPoint {
 
 #[derive(Debug, Default)]
 pub struct GridTable {
-    pub start_time: DateTime<Utc>,         // st_time in RST
-    pub end_time: DateTime<Utc>,           // ed_time in RST
-    pub channel: i32,            // chn in RST
-    pub status: i32,             // status in RST
-    pub station_id: i32,         // st_id in RST
-    pub program_id: i32,         // prog_id in RST
-    pub num_scans: i32,          // nscan in RST
-    pub num_points_npnt: i32,    // npnt in RST, number of grid points
-    pub freq: f32,               // freq in RST
-    pub noise_mean: f32,         // noise.mean in RST
-    pub noise_stddev: f32,       // noise.sd in RST
-    pub groundscatter: i32,      // gsct in RST
-    pub min_power: f32,          // min[0] in RST, a.u. in linear scale
-    pub min_velocity: f32,       // min[1] in RST, m/s
-    pub min_spectral_width: f32, // min[2] in RST, m/s
-    pub min_velocity_error: f32, // min[3] in RST, m/s
-    pub max_power: f32,          // max[0] in RST, a.u. in linear scale
-    pub max_velocity: f32,       // max[1] in RST, m/s
-    pub max_spectral_width: f32, // max[2] in RST, m/s
-    pub max_velocity_error: f32, // max[3] in RST, m/s
-    pub num_beams: i32,          // bnum in RST
-    pub beams: Vec<GridBeam>,    // bm in RST
-    pub num_points_pnum: i32,    // pnum in RST
-    pub points: Vec<GridPoint>,  // pnt in RST
+    pub start_time: DateTime<Utc>, // st_time in RST
+    pub end_time: DateTime<Utc>,   // ed_time in RST
+    pub channel: i32,              // chn in RST
+    pub status: i32,               // status in RST
+    pub station_id: i32,           // st_id in RST
+    pub program_id: i32,           // prog_id in RST
+    pub num_scans: i32,            // nscan in RST
+    pub num_points_npnt: i32,      // npnt in RST, number of grid points
+    pub freq: f32,                 // freq in RST
+    pub noise_mean: f32,           // noise.mean in RST
+    pub noise_stddev: f32,         // noise.sd in RST
+    pub groundscatter: i32,        // gsct in RST
+    pub min_power: f32,            // min[0] in RST, a.u. in linear scale
+    pub min_velocity: f32,         // min[1] in RST, m/s
+    pub min_spectral_width: f32,   // min[2] in RST, m/s
+    pub min_velocity_error: f32,   // min[3] in RST, m/s
+    pub max_power: f32,            // max[0] in RST, a.u. in linear scale
+    pub max_velocity: f32,         // max[1] in RST, m/s
+    pub max_spectral_width: f32,   // max[2] in RST, m/s
+    pub max_velocity_error: f32,   // max[3] in RST, m/s
+    pub num_beams: i32,            // bnum in RST
+    pub beams: Vec<GridBeam>,      // bm in RST
+    pub num_points_pnum: i32,      // pnum in RST
+    pub points: Vec<GridPoint>,    // pnt in RST
 }
 impl GridTable {
     /// Called GridTableZero in RST
@@ -100,11 +100,14 @@ impl GridTable {
     /// Tests whether gridded data should be written to a file.
     /// Called GridTableTest in RST
     pub fn test(&mut self, scan: &RadarScan) -> bool {
-        let time_micros = (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
+        let time_micros =
+            (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
         let time: DateTime<Utc>;
         match DateTime::from_timestamp_micros(time_micros) {
-            Some(x) => { time = x; },
-            None => return false
+            Some(x) => {
+                time = x;
+            }
+            None => return false,
         }
 
         if self.start_time == DateTime::<Utc>::default() {
@@ -144,7 +147,8 @@ impl GridTable {
                     // Calculate azimuth of weighted mean velocity vector
                     point.azimuth = point
                         .velocity_median_east
-                        .atan2(point.velocity_median_north.clone()).to_degrees();
+                        .atan2(point.velocity_median_north.clone())
+                        .to_degrees();
 
                     // Calculate weighted mean of spectral width and power
                     point.spectral_width_median /= &point.spectral_width_stddev;
@@ -173,9 +177,7 @@ impl GridTable {
     /// Returns the index of the point in the table whose reference number matches the input.
     /// Called GridTableFindPoint in RST
     pub fn find_point(&self, reference: i32) -> Option<usize> {
-        self.points
-            .iter()
-            .position(|x| x.reference == reference)
+        self.points.iter().position(|x| x.reference == reference)
     }
 
     /// Adds a grid beam to the grid table.
@@ -189,10 +191,8 @@ impl GridTable {
         chisham: bool,
         old_aacgm: bool,
     ) -> Result<usize, GridError> {
-        let velocity_correction: f32 = (2.0 * PI / 86400.0)
-            * RADIUS_EARTH
-            * 1000.0
-            * hdw.latitude.to_radians().cos();
+        let velocity_correction: f32 =
+            (2.0 * PI / 86400.0) * RADIUS_EARTH * 1000.0 * hdw.latitude.to_radians().cos();
         self.num_beams += 1;
 
         let mut grid_beam = GridBeam {
@@ -256,10 +256,13 @@ impl GridTable {
             // Calculate reference number for cell
             let reference: i32;
             if mag_loc[1] > 0.0 {
-                reference = (1000.0 * mag_loc[1].to_degrees().floor() as f32 + (mag_loc[0].to_degrees() as f32 * lon_spacing).floor()) as i32;
+                reference = (1000.0 * mag_loc[1].to_degrees().floor() as f32
+                    + (mag_loc[0].to_degrees() as f32 * lon_spacing).floor())
+                    as i32;
             } else {
-                reference =
-                    (-1000.0 * (-1.0 * mag_loc[1].to_degrees()).floor() as f32 - (mag_loc[0].to_degrees() as f32 * lon_spacing).floor()) as i32;
+                reference = (-1000.0 * (-1.0 * mag_loc[1].to_degrees()).floor() as f32
+                    - (mag_loc[0].to_degrees() as f32 * lon_spacing).floor())
+                    as i32;
             }
 
             // Find GridPoint corresponding to reference number for cell, make new GridPoint if none found
@@ -280,9 +283,9 @@ impl GridTable {
             // Set index, magnetic azimuth, inertial velocity correction factor of beam
             grid_beam.index.push(index as i32);
             grid_beam.azimuth.push(azimuth_mag);
-            grid_beam.ival.push(
-                velocity_correction * (azimuth_geo + 90.0).to_radians().cos()
-            );
+            grid_beam
+                .ival
+                .push(velocity_correction * (azimuth_geo + 90.0).to_radians().cos());
         }
         self.beams.push(grid_beam);
         // Return index of beam number added to self
@@ -293,14 +296,12 @@ impl GridTable {
     /// match those of the input.
     /// Called GridTableFindBeam in RST
     pub fn find_beam(&self, beam: &RadarBeam) -> Option<usize> {
-        self.beams
-            .iter()
-            .position(|x| {
-                x.beam == beam.beam
-                    && x.first_range == beam.first_range
-                    && x.range_sep == beam.range_sep
-                    && x.num_ranges == beam.num_ranges
-            })
+        self.beams.iter().position(|x| {
+            x.beam == beam.beam
+                && x.first_range == beam.first_range
+                && x.range_sep == beam.range_sep
+                && x.num_ranges == beam.num_ranges
+        })
     }
 
     /// Maps radar scan data to an equal-area grid in magnetic coordinates.
@@ -315,8 +316,11 @@ impl GridTable {
         chisham: bool,
         old_aacgm: bool,
     ) -> Result<(), GridError> {
-        let time_micros = (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
-        let time = DateTime::from_timestamp_micros(time_micros).ok_or_else(|| GridError::InvalidFitacf("Invalid datetime for GridTable".to_string()))?;
+        let time_micros =
+            (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
+        let time = DateTime::from_timestamp_micros(time_micros).ok_or_else(|| {
+            GridError::InvalidFitacf("Invalid datetime for GridTable".to_string())
+        })?;
         if self.status == 0 {
             self.status = 1;
             self.noise_mean = 0.0;
@@ -329,7 +333,9 @@ impl GridTable {
         }
 
         for scan_beam in scan.beams.iter() {
-            if scan_beam.beam == -1 { continue; }
+            if scan_beam.beam == -1 {
+                continue;
+            }
             let beam_index = match self.find_beam(scan_beam) {
                 Some(i) => i,
                 None => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
@@ -424,7 +430,7 @@ impl GridTable {
 
     /// Converts the GridTable to a GridRecord for writing to file.
     /// Equivalent to GridTableWrite in RST.
-    pub fn to_dmap_record(&self) -> Result<GridRecord, GridError> {
+    pub fn to_dmap_record(&self, extended_flag: bool) -> Result<GridRecord, GridError> {
         let mut grid_rec: IndexMap<String, DmapField> = IndexMap::new();
 
         // Find the valid points in the grid
@@ -479,22 +485,13 @@ impl GridTable {
             "start.second".to_string(),
             (self.start_time.second() as i16).into(),
         );
-        grid_rec.insert(
-            "end.year".to_string(),
-            (self.end_time.year() as i16).into(),
-        );
+        grid_rec.insert("end.year".to_string(), (self.end_time.year() as i16).into());
         grid_rec.insert(
             "end.month".to_string(),
             (self.end_time.month() as i16).into(),
         );
-        grid_rec.insert(
-            "end.day".to_string(),
-            (self.end_time.day() as i16).into(),
-        );
-        grid_rec.insert(
-            "end.hour".to_string(),
-            (self.end_time.hour() as i16).into(),
-        );
+        grid_rec.insert("end.day".to_string(), (self.end_time.day() as i16).into());
+        grid_rec.insert("end.hour".to_string(), (self.end_time.hour() as i16).into());
         grid_rec.insert(
             "end.minute".to_string(),
             (self.end_time.minute() as i16).into(),
@@ -515,10 +512,7 @@ impl GridTable {
             "nvec".to_string(),
             array![num_points as i16].into_dyn().into(),
         );
-        grid_rec.insert(
-            "freq".to_string(),
-            array![self.freq as f32].into_dyn().into(),
-        );
+        grid_rec.insert("freq".to_string(), array![self.freq].into_dyn().into());
         grid_rec.insert(
             "major.revision".to_string(),
             array![GRID_REVISION_MAJOR as i16].into_dyn().into(),
@@ -533,11 +527,11 @@ impl GridTable {
         );
         grid_rec.insert(
             "noise.mean".to_string(),
-            array![self.noise_mean as f32].into_dyn().into(),
+            array![self.noise_mean].into_dyn().into(),
         );
         grid_rec.insert(
             "noise.sd".to_string(),
-            array![self.noise_stddev as f32].into_dyn().into(),
+            array![self.noise_stddev].into_dyn().into(),
         );
         grid_rec.insert(
             "gsct".to_string(),
@@ -545,35 +539,35 @@ impl GridTable {
         );
         grid_rec.insert(
             "v.min".to_string(),
-            array![self.min_velocity as f32].into_dyn().into(),
+            array![self.min_velocity].into_dyn().into(),
         );
         grid_rec.insert(
             "v.max".to_string(),
-            array![self.max_velocity as f32].into_dyn().into(),
+            array![self.max_velocity].into_dyn().into(),
         );
         grid_rec.insert(
             "p.min".to_string(),
-            array![self.min_power as f32].into_dyn().into(),
+            array![self.min_power].into_dyn().into(),
         );
         grid_rec.insert(
             "p.max".to_string(),
-            array![self.min_power as f32].into_dyn().into(),
+            array![self.min_power].into_dyn().into(),
         );
         grid_rec.insert(
             "w.min".to_string(),
-            array![self.min_spectral_width as f32].into_dyn().into(),
+            array![self.min_spectral_width].into_dyn().into(),
         );
         grid_rec.insert(
             "w.max".to_string(),
-            array![self.max_spectral_width as f32].into_dyn().into(),
+            array![self.max_spectral_width].into_dyn().into(),
         );
         grid_rec.insert(
             "ve.min".to_string(),
-            array![self.min_velocity_error as f32].into_dyn().into(),
+            array![self.min_velocity_error].into_dyn().into(),
         );
         grid_rec.insert(
             "ve.max".to_string(),
-            array![self.max_velocity_error as f32].into_dyn().into(),
+            array![self.max_velocity_error].into_dyn().into(),
         );
         grid_rec.insert(
             "vector.mlat".to_string(),
@@ -607,22 +601,24 @@ impl GridTable {
             "vector.vel.sd".to_string(),
             Array::from_vec(velocity_stddev).into_dyn().into(),
         );
-        grid_rec.insert(
-            "vector.pwr.median".to_string(),
-            Array::from_vec(power_median).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.pwr.sd".to_string(),
-            Array::from_vec(power_stddev).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.wdt.median".to_string(),
-            Array::from_vec(spectral_width_median).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.wdt.sd".to_string(),
-            Array::from_vec(spectral_width_stddev).into_dyn().into(),
-        );
+        if extended_flag {
+            grid_rec.insert(
+                "vector.pwr.median".to_string(),
+                Array::from_vec(power_median).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.pwr.sd".to_string(),
+                Array::from_vec(power_stddev).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.wdt.median".to_string(),
+                Array::from_vec(spectral_width_median).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.wdt.sd".to_string(),
+                Array::from_vec(spectral_width_stddev).into_dyn().into(),
+            );
+        }
 
         Ok(GridRecord { data: grid_rec })
     }

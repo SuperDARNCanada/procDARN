@@ -1,11 +1,11 @@
+use crate::error::ProcdarnError;
+use crate::gridding::grid::GridError;
 use crate::gridding::grid_table::RADIUS_EARTH;
 use crate::utils::hdw::HdwInfo;
 use geodesy::prelude::*;
 use igrf::declination;
 use std::f64::consts::PI;
 use time::Date;
-use crate::error::ProcdarnError;
-use crate::gridding::grid::GridError;
 
 /// Normalize a vector.
 fn norm_vector(v: &Coor3D) -> Coor3D {
@@ -38,9 +38,8 @@ pub fn geodetic_to_geocentric(geodetic_coords: &Coor2D) -> Coor3D {
     if gclon.to_degrees() > 180.0 {
         gclon -= 360.0_f64.to_radians();
     }
-    let rho = semi_major_axis
-        / (1.0 + second_eccentricity_squared * gclat.sin() * gclat.sin())
-            .sqrt();
+    let rho =
+        semi_major_axis / (1.0 + second_eccentricity_squared * gclat.sin() * gclat.sin()).sqrt();
 
     Coor3D::raw(gclon, gclat, rho)
 }
@@ -57,11 +56,14 @@ pub fn geocentric_to_geodetic(geocentric_coords: Coor2D) -> Coor3D {
 
     let gdlat = ((semi_major_axis * semi_major_axis) / (semi_minor_axis * semi_minor_axis)
         * geocentric_coords[1].tan())
-        .atan();
+    .atan();
     let gdlon = geocentric_coords[0];
 
     let rho = semi_major_axis
-        / (1.0 + second_eccentricity_squared * geocentric_coords[1].sin() * geocentric_coords[1].sin())
+        / (1.0
+            + second_eccentricity_squared
+                * geocentric_coords[1].sin()
+                * geocentric_coords[1].sin())
         .sqrt();
 
     Coor3D::raw(gdlon, gdlat, rho)
@@ -219,11 +221,11 @@ fn fieldpoint(radar_location: &Coor3D, direction: &Coor3D) -> Coor3D {
     let mut sz = direction[2] * direction[1].sin();
 
     /* Convert from local Cartesian to global Cartesian */
-    let mut tx = (PI / 2.0 - radar_location[1]).cos() * sx
-        + (PI / 2.0 - radar_location[1]).sin() * sz;
+    let mut tx =
+        (PI / 2.0 - radar_location[1]).cos() * sx + (PI / 2.0 - radar_location[1]).sin() * sz;
     let mut ty = sy;
-    let mut tz = -(PI / 2.0 - radar_location[1]).sin() * sx
-        + (PI / 2.0 - radar_location[1]).cos() * sz;
+    let mut tz =
+        -(PI / 2.0 - radar_location[1]).sin() * sx + (PI / 2.0 - radar_location[1]).cos() * sz;
     sx = radar_location[0].cos() * tx - radar_location[0].sin() * ty;
     sy = radar_location[0].sin() * tx + radar_location[0].cos() * ty;
     sz = tz;
@@ -261,11 +263,14 @@ fn fieldpoint_height(
     let mut virtual_height: f32;
     if chisham {
         if slant_range < 787.5 {
-            virtual_height = 108.974 + 0.0191271 * slant_range + 6.68283e-5 * slant_range * slant_range;
+            virtual_height =
+                108.974 + 0.0191271 * slant_range + 6.68283e-5 * slant_range * slant_range;
         } else if slant_range < 2137.5 {
-            virtual_height = 384.416 - 0.17864 * slant_range + 1.81405e-4 * slant_range * slant_range;
+            virtual_height =
+                384.416 - 0.17864 * slant_range + 1.81405e-4 * slant_range * slant_range;
         } else {
-            virtual_height = 1098.28 - 0.354557 * slant_range + 9.39961e-5 * slant_range * slant_range;
+            virtual_height =
+                1098.28 - 0.354557 * slant_range + 9.39961e-5 * slant_range * slant_range;
         }
         if slant_range < 115.0 {
             virtual_height = slant_range / 115.0 * 112.0;
@@ -298,7 +303,11 @@ fn fieldpoint_height(
     let mut point_sph = Coor3D::default();
 
     // This will prevent elevation angle from being NaN later on
-    let range = if slant_range == 0.0 { 0.1 } else { slant_range as f64 };
+    let range = if slant_range == 0.0 {
+        0.1
+    } else {
+        slant_range as f64
+    };
 
     let mut point_height = virtual_height + 1.0; // Initialize to make the below loop a do-while loop
     while (point_height - virtual_height).abs() > 0.5 {
@@ -401,9 +410,7 @@ fn rpos_geo(
     let offset = hdw.max_num_beams as f32 / 2.0 - 0.5;
 
     // Calculate deviation from boresight in degrees
-    let psi = hdw.beam_separation * (beam_num as f32 - offset)
-        + beam_edge
-        + hdw.boresight_shift;
+    let psi = hdw.beam_separation * (beam_num as f32 - offset) + beam_edge + hdw.boresight_shift;
 
     // Calculate the slant range to the range gate in km
     let distance = slant_range(
@@ -522,7 +529,8 @@ pub fn rpos_range_beam_azimuth_elevation(
 
     // Calculate the azimuth and elevation angles of the orthogonal radar-to-range/beam vector
     let elevation = normed_local_del[2].atan2(
-        (normed_local_del[0] * normed_local_del[0] + normed_local_del[1] * normed_local_del[1]).sqrt(),
+        (normed_local_del[0] * normed_local_del[0] + normed_local_del[1] * normed_local_del[1])
+            .sqrt(),
     );
     let azimuth = normed_local_del[1].atan2(-normed_local_del[0]);
 
@@ -571,11 +579,16 @@ pub fn rpos_inv_mag(
     // let cell_cartesian = ellipse.cartesian(&cell_geoc);
     let cell_cartesian = geocentric_to_cartesian(&cell_geoc);
 
-    let site_location_geoc = geodetic_to_geocentric(&Coor2D::raw(site_location_geod[0], site_location_geod[1]));
+    let site_location_geoc =
+        geodetic_to_geocentric(&Coor2D::raw(site_location_geod[0], site_location_geod[1]));
 
     // Convert radar geocentric coordinates to global Cartesian coordinates
     // let site_location_cartesian = ellipse.cartesian(&site_location_geo);
-    let site_location_cartesian = geocentric_to_cartesian(&Coor3D::raw(site_location_geoc[0], site_location_geoc[1], site_location_geoc[2]));
+    let site_location_cartesian = geocentric_to_cartesian(&Coor3D::raw(
+        site_location_geoc[0],
+        site_location_geoc[1],
+        site_location_geoc[2],
+    ));
 
     // Calculate vector from site to center of range/beam cell
     let del = cell_cartesian - site_location_cartesian;

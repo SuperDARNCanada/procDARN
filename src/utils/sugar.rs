@@ -18,7 +18,9 @@ pub fn get_datetime(rec: &FitacfRecord) -> Result<DateTime<Utc>, ProcdarnError> 
             .clone()
             .try_into()?,
     )
-    .ok_or(ProcdarnError::Timestamp("invalid ymd timestamp in record".to_string()))?;
+    .ok_or(ProcdarnError::Timestamp(
+        "invalid ymd timestamp in record".to_string(),
+    ))?;
     let dt = date
         .and_hms_micro_opt(
             rec.get(&"time.hr".to_string())

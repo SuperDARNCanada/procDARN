@@ -1,4 +1,3 @@
-use std::os::raw::c_int;
 use crate::error::ProcdarnError;
 use crate::gridding::filter::{check_operational_params, median_filter};
 use crate::gridding::grid_table::GridTable;
@@ -10,9 +9,10 @@ use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::grid::GridRecord;
-use std::path::PathBuf;
 use pyo3::exceptions::PyValueError;
 use pyo3::PyErr;
+use std::os::raw::c_int;
+use std::path::PathBuf;
 use thiserror::Error;
 
 /// Enum of the possible error variants that may be encountered
@@ -66,72 +66,71 @@ impl From<GridError> for PyErr {
 #[command(author, version, about, long_about = None)]
 pub struct GridArgs {
     /// Output grid file path
-    #[arg()]
     pub outfile: PathBuf,
 
     /// Fitacf file(s) to grid
-    #[arg(num_args = 1..)]
+    #[arg(num_args = 1.., last = true)]
     pub infiles: Vec<PathBuf>,
 
     /// Start time in HH:MM format
     #[arg(long, visible_alias = "st")]
-    start_time: Option<String>,
+    pub start_time: Option<String>,
 
     /// End time in HH:MM format
     #[arg(long, visible_alias = "et")]
-    end_time: Option<String>,
+    pub end_time: Option<String>,
 
     /// Start date in YYYYMMDD format
     #[arg(long, visible_alias = "sd")]
-    start_date: Option<String>,
+    pub start_date: Option<String>,
 
     /// End date in YYYYMMDD format
     #[arg(long, visible_alias = "ed")]
-    end_date: Option<String>,
+    pub end_date: Option<String>,
 
     /// Use interval of length HH:MM
     #[arg(long, visible_alias = "ex", conflicts_with_all = &["end_time", "end_date"])]
-    interval: Option<String>,
+    pub interval: Option<String>,
 
     /// Scan length specification in whole seconds, overriding the scan flag
     #[arg(long, visible_alias = "tl")]
-    scan_length: Option<u32>,
+    pub scan_length: Option<u32>,
 
     /// Time interval to store in each grid record, in whole seconds
     #[arg(short = 'i', long, value_parser, default_value = "120")]
-    record_interval: u32,
+    pub record_interval: u32,
 
     /// Stereo channel identifier, either 'a' or 'b'
     #[arg(long, visible_alias = "cn", value_parser)]
-    channel: Option<char>,
+    pub channel: Option<char>,
 
     /// User-defined channel identifier for the output file only
     #[arg(long, visible_alias = "cn_fix", conflicts_with = "channel")]
-    channel_fix: Option<char>,
+    pub channel_fix: Option<char>,
 
     /// Beams to exclude, as a comma-separated list
     #[arg(long, visible_alias = "ebm", value_delimiter = ',', value_parser)]
-    exclude_beams: Option<Vec<i32>>,
+    pub exclude_beams: Option<Vec<i32>>,
 
     /// Minimum range gate
     #[arg(long, visible_alias = "minrng")]
-    min_range_gate: Option<usize>,
+    pub min_range_gate: Option<usize>,
 
     /// Maximum range gate
     #[arg(long, visible_alias = "maxrng")]
-    max_range_gate: Option<usize>,
+    pub max_range_gate: Option<usize>,
 
     /// Minimum slant range in km
     #[arg(long, visible_alias = "minsrng")]
-    min_slant_range: Option<f32>,
+    pub min_slant_range: Option<f32>,
 
     /// Maximum slant range in km
     #[arg(long, visible_alias = "maxsrng")]
-    max_slant_range: Option<f32>,
+    pub max_slant_range: Option<f32>,
 
     /// Filter weighting mode
     #[arg(long, visible_alias = "fwgt", value_parser, default_value = "0")]
-    filter_weighting: i32,
+    pub filter_weighting: i32,
 
     /// Maximum power (linear scale)
     #[arg(
@@ -141,7 +140,7 @@ pub struct GridArgs {
         default_value = "2500",
         requires = "op_param_flag"
     )]
-    max_power: f32,
+    pub max_power: f32,
 
     /// Maximum velocity in m/s
     #[arg(
@@ -151,7 +150,7 @@ pub struct GridArgs {
         default_value = "60",
         requires = "op_param_flag"
     )]
-    max_velocity: f32,
+    pub max_velocity: f32,
 
     /// Maximum spectral width in m/s
     #[arg(
@@ -161,7 +160,7 @@ pub struct GridArgs {
         default_value = "1000",
         requires = "op_param_flag"
     )]
-    max_spectral_width: f32,
+    pub max_spectral_width: f32,
 
     /// Maximum velocity error in m/s
     #[arg(
@@ -171,7 +170,7 @@ pub struct GridArgs {
         default_value = "200",
         requires = "op_param_flag"
     )]
-    max_velocity_error: f32,
+    pub max_velocity_error: f32,
 
     /// Minimum power (linear scale)
     #[arg(
@@ -181,7 +180,7 @@ pub struct GridArgs {
         default_value = "35",
         requires = "op_param_flag"
     )]
-    min_power: f32,
+    pub min_power: f32,
 
     /// Minimum velocity in m/s
     #[arg(
@@ -191,7 +190,7 @@ pub struct GridArgs {
         default_value = "3",
         requires = "op_param_flag"
     )]
-    min_velocity: f32,
+    pub min_velocity: f32,
 
     /// Minimum spectral width in m/s
     #[arg(
@@ -201,7 +200,7 @@ pub struct GridArgs {
         default_value = "10",
         requires = "op_param_flag"
     )]
-    min_spectral_width: f32,
+    pub min_spectral_width: f32,
 
     /// Minimum velocity error in m/s
     #[arg(
@@ -211,69 +210,69 @@ pub struct GridArgs {
         default_value = "0",
         requires = "op_param_flag"
     )]
-    min_velocity_error: f32,
+    pub min_velocity_error: f32,
 
     /// Altitude at which mapping is done in km
     #[arg(long, visible_alias = "alt", value_parser, default_value = "300")]
-    altitude: f32,
+    pub altitude: f32,
 
     /// Maximum allowed frequency variation in Hz
     #[arg(long, visible_alias = "fmax", value_parser, default_value = "500000")]
-    max_frequency_var: i32,
+    pub max_frequency_var: i32,
 
     /// Flag to disable boxcar median filtering
     #[arg(long, visible_alias = "nav", action = clap::ArgAction::SetFalse)]
-    boxcar_filter_flag: bool,
+    pub boxcar_filter_flag: bool,
 
     /// Flag to include data that exceeds limits
     #[arg(long, visible_alias = "nlm", action = clap::ArgAction::SetTrue)]
-    no_limits_flag: bool,
+    pub no_limits_flag: bool,
 
     /// Flag to exclude data that doesn't match operating parameter requirements
     #[arg(long, visible_alias = "nb", action = clap::ArgAction::SetTrue)]
-    op_param_flag: bool,
+    pub op_param_flag: bool,
 
     /// Flag to exclude data with scan flag of -1
     #[arg(long, visible_alias = "ns", action = clap::ArgAction::SetTrue)]
-    exclude_neg_scan_flag: bool,
+    pub exclude_neg_scan_flag: bool,
 
     /// Extended output, include power and width in output file
     #[arg(long, visible_alias = "xtd", action = clap::ArgAction::SetTrue)]
-    extended_mode_flag: bool,
+    pub extended_mode_flag: bool,
 
     /// If using a median filter, sort parameters independent of the velocity
     #[arg(long, visible_alias = "isort", action = clap::ArgAction::SetTrue)]
-    sort_params_flag: bool,
+    pub sort_params_flag: bool,
 
     /// Exclude data marked as ground scatter
     #[arg(long, visible_alias = "ion", default_value = "true", action = clap::ArgAction::SetTrue)]
-    ionosphere_only_flag: bool,
+    pub ionosphere_only_flag: bool,
 
     /// Exclude data not marked as ground scatter
     #[arg(long, visible_alias = "gs", action = clap::ArgAction::SetTrue,
     conflicts_with = "ionosphere_only_flag")]
-    groundscatter_only_flag: bool,
+    pub groundscatter_only_flag: bool,
 
     /// Do not exclude data based on scatter flag
     #[arg(long, visible_alias = "both", action = clap::ArgAction::SetTrue,
     conflicts_with_all = &["ionosphere_only_flag", "groundscatter_only_flag"])]
-    all_data_flag: bool,
+    pub all_data_flag: bool,
 
     /// Use inertial reference frame
     #[arg(long, visible_alias = "inertial", action = clap::ArgAction::SetTrue)]
-    inertial_frame_flag: bool,
+    pub inertial_frame_flag: bool,
 
     /// Map data using Chisham virtual height model
     #[arg(long, visible_alias = "chisham", action = clap::ArgAction::SetTrue)]
-    chisham_flag: bool,
+    pub chisham_flag: bool,
 
-    /// Map data using old AACGM coefficients, rather than v2
-    #[arg(long, visible_alias = "old_aacgm", action = clap::ArgAction::SetTrue)]
-    old_aacgm_flag: bool,
-
+    // todo: accept old_aacgm
+    // /// Map data using old AACGM coefficients, rather than v2
+    // #[arg(long, visible_alias = "old_aacgm", action = clap::ArgAction::SetTrue)]
+    // pub old_aacgm_flag: bool,
     /// Verbose mode
     #[arg(short, long, action = clap::ArgAction::SetTrue)]
-    verbose: bool,
+    pub verbose: bool,
 }
 
 /// Takes a list of fitacf files and converts them into grid files.
@@ -315,7 +314,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
     };
 
     // Store bounding thresholds for power, velocity, velocity error, and spectral width in GridTable
-    if !args.no_limits_flag {
+    if !args.op_param_flag {
         grid_table.min_power = args.min_power;
         grid_table.min_velocity = args.min_velocity;
         grid_table.min_spectral_width = args.min_spectral_width;
@@ -342,31 +341,32 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
     let mut index = 0;
     let mut num_scans = 0;
     let mut record_idx: Option<usize> = None;
-    let mut end_time: DateTime<Utc> = DateTime::default();
+    let mut end_time: Option<DateTime<Utc>> = None;
     let hdw_info: Option<HdwInfo> = None;
     let mut records_for_file: Vec<GridRecord> = vec![];
     let mut found_scan: bool;
 
     for infile in args.infiles.clone().into_iter() {
-        println!("Fitting file {}", infile.display());
+        if args.verbose {
+            println!("Gridding file {}", infile.display())
+        };
         let fitacf_records = dmap::read_fitacf(infile.clone())?;
 
         // Get the first scan from the file
         match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
             Ok((x, _)) => {
-                println!("current_scans: len({}), index={index}", current_scans.len());
                 current_scans[index] = x;
                 found_scan = true;
             }
             Err(e) => {
-                eprintln!("Unable to get first scan from {} - {e}", infile.display());
+                if args.verbose {
+                    println!("Unable to get first scan from {} - {e}", infile.display())
+                };
                 continue;
             }
         };
 
         let file_datetime = current_scans[index].start_time;
-
-        println!("file starts at {file_datetime}"); // todo: remove
 
         // Determine the starting time for gridding based on the record and input options
         let mut start_time = file_datetime;
@@ -377,7 +377,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
             } else {
                 let date_string = match &args.start_date {
                     Some(d) => d.clone(),
-                    None => current_scans[0].start_time.format("%Y%m%d").to_string()
+                    None => current_scans[0].start_time.format("%Y%m%d").to_string(),
                 };
 
                 let time_string = match &args.start_time {
@@ -396,7 +396,9 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     )
                 })?
                 .and_utc();
-                println!("start_time: {start_time}");
+                if args.verbose {
+                    println!("start_time: {start_time}")
+                };
                 // If applying boxcar median filter then we need to load data prior to the usual start
                 // time, so start_time needs to be adjusted
                 if num_averages > 1 {
@@ -409,7 +411,8 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                             })?
                         }
                         None => {
-                            let td = current_scans[0].end_time - current_scans[0].start_time + TimeDelta::seconds(15);
+                            let td = current_scans[0].end_time - current_scans[0].start_time
+                                + TimeDelta::seconds(15);
                             start_time -= td;
                         }
                     }
@@ -419,10 +422,12 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 if let Ok(Some((_, idx))) = fit_seek(&fitacf_records, start_time) {
                     record_idx = Some(idx);
                 } else {
-                    eprintln!(
-                        "Ignoring file {} as it ends before requested start time",
-                        infile.display()
-                    );
+                    if args.verbose {
+                        println!(
+                            "Ignoring file {} as it ends before requested start time",
+                            infile.display()
+                        );
+                    }
                     continue;
                 }
                 found_record = true;
@@ -436,22 +441,27 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                                 rec.get(&"scan".to_string())
                                     .ok_or_else(|| {
                                         GridError::InvalidFitacf(format!(
-                                            "missing `scan` flag in {}", infile.display()
+                                            "missing `scan` flag in {}",
+                                            infile.display()
                                         ))
                                     })?
                                     .clone(),
-                            ).map_err(|_| {
+                            )
+                            .map_err(|_| {
                                 GridError::InvalidFitacf(format!(
-                                    "bad `scan` flag in {}", infile.display()
+                                    "bad `scan` flag in {}",
+                                    infile.display()
                                 ))
                             })?;
                             scan_flags.push(scn_flg);
                         }
-                        record_idx = Some(scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
-                            GridError::InvalidFitacf(format!(
-                                "No records with set `scan` flag in {}", infile.display()
-                            ))
-                        })?);
+                        record_idx =
+                            Some(scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
+                                GridError::InvalidFitacf(format!(
+                                    "No records with set `scan` flag in {}",
+                                    infile.display()
+                                ))
+                            })?);
                     } else {
                         return Err(GridError::BadArgs(
                             "No records match requested scan time".to_string(),
@@ -486,18 +496,15 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                         )
                     })?
                     .and_utc()
+                    .into()
                 }
                 None => match &args.interval {
                     Some(x) => {
                         let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
                         let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
-                        start_time + dur
+                        Some(start_time + dur)
                     }
-                    None => {
-                        return Err(GridError::BadArgs(
-                            "No end time or interval specified for grid".to_string(),
-                        ))
-                    }
+                    None => None,
                 },
             };
             found_record = false
@@ -515,17 +522,31 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         while found_scan {
             // Exclude scatter in beams listed in args.exclude_beams
             if let Some(b) = &args.exclude_beams {
-                eprintln!("excluding beams {:?}", &args.exclude_beams);
+                if args.verbose {
+                    println!("excluding beams {:?}", &args.exclude_beams)
+                };
                 current_scans[index].reset_beams(b)?;
             }
 
             // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
             if args.exclude_neg_scan_flag {
-                eprintln!("excluding data with negative scan flag");
+                if args.verbose {
+                    println!("excluding data with negative scan flag")
+                };
                 current_scans[index].exclude_outofscan();
             }
 
             // Exclude scatter in range gates below args.min_range_gate or above args.max_range_gate
+            if args.verbose {
+                println!(
+                    "Excluding ranges outside [{:?}, {:?}] and slant range outside [{:?}, {:?}]",
+                    args.min_range_gate,
+                    args.max_range_gate,
+                    args.min_slant_range,
+                    args.max_slant_range
+                );
+            }
+
             current_scans[index].exclude_range(
                 args.min_range_gate,
                 args.max_range_gate,
@@ -535,16 +556,22 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
             // Exclude groundscatter or ionospheric scatter, depending on the args given
             if args.groundscatter_only_flag {
-                eprintln!("excluding ionospheric scatter");
+                if args.verbose {
+                    println!("excluding ionospheric scatter")
+                };
                 current_scans[index].exclude_ionospheric_scatter();
             } else if args.ionosphere_only_flag {
-                eprintln!("excluding ground scatter");
+                if args.verbose {
+                    println!("excluding ground scatter")
+                };
                 current_scans[index].exclude_groundscatter();
             }
 
             // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
-            if !args.no_limits_flag {
-                eprintln!("Excluding out of bounds");
+            if !args.op_param_flag {
+                if args.verbose {
+                    println!("Excluding out of bounds")
+                };
                 current_scans[index].exclude_outofbounds(&grid_table);
             }
 
@@ -582,7 +609,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 if grid_table.test(&grid_record) {
                     // If GridTable good and grid record starts at or after start_time, write to file
                     if grid_table.start_time >= start_time {
-                        records_for_file.push(grid_table.to_dmap_record()?);
+                        records_for_file.push(grid_table.to_dmap_record(args.extended_mode_flag)?);
                     }
                 }
 
@@ -590,11 +617,11 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 grid_table.map(
                     &grid_record,
                     &hdw_params,
-                    args.scan_length.unwrap_or(0) as i32,
+                    args.record_interval as i32,
                     args.inertial_frame_flag,
                     args.altitude,
                     args.chisham_flag,
-                    args.old_aacgm_flag,
+                    false, // todo: args.old_aacgm_flag,
                 )?;
             }
 
@@ -606,23 +633,26 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
             // Get the next scan
             let start_idx = record_idx.unwrap_or_else(|| 0);
-            let scan_res = RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
+            let scan_res =
+                RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
             match scan_res {
                 Ok((new_scan, num_read)) => {
                     found_scan = true;
                     current_scans[index] = new_scan;
                     record_idx = Some(start_idx + num_read);
-                },
+                }
                 Err(ProcdarnError::ZeroRecords(_)) => {
                     found_scan = false;
                     record_idx = None;
-                },
-                Err(e) => Err(e)?
+                }
+                Err(e) => Err(e)?,
             };
 
             // If scan starts after end_time, this file is done being gridded
-            if current_scans[index].start_time > end_time {
-                break;
+            if let Some(dt) = end_time {
+                if current_scans[index].start_time > dt {
+                    break;
+                }
             }
             num_scans += 1;
         }

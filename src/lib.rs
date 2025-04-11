@@ -98,7 +98,6 @@ fn fit2grid_cli(py: Python) -> PyResult<()> {
         .getattr("argv")?
         .extract::<Vec<String>>()?;
     let args = GridArgs::parse_from(argv);
-    println!("{:?}", env!("AACGM_v2_DAT_PREFIX"));
     std::env::set_var("AACGM_v2_DAT_PREFIX", env!("AACGM_v2_DAT_PREFIX"));
     let grid_records = fit2grid(&args)?;
     dmap::write_grid(grid_records, &args.outfile)?;
