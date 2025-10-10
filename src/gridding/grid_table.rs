@@ -4,6 +4,7 @@ use crate::utils::rpos::{rpos_inv_mag, rpos_range_beam_azimuth_elevation};
 use crate::utils::scan::{RadarBeam, RadarScan};
 use chrono::{DateTime, Datelike, TimeDelta, Timelike, Utc};
 use dmap::formats::grid::GridRecord;
+use dmap::record::Record;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
 use numpy::ndarray::array;
@@ -21,14 +22,15 @@ pub const RADIUS_EARTH: f32 = 6371.2; // km
 
 #[derive(Debug, Default)]
 pub struct GridBeam {
-    pub beam: i32,         // bm in RST
-    pub first_range: i32,  // frang in RST, km
-    pub range_sep: i32,    // rsep in RST, km
-    pub rx_rise: i32,      // rxrise in RST, microseconds?
-    pub num_ranges: i32,   // nrang in RST
-    pub azimuth: Vec<f32>, // azm in RST, degrees?
-    pub ival: Vec<f32>,    // ival in RST
-    pub index: Vec<i32>,   // inx in RST
+    pub beam: i32,             // bm in RST
+    pub first_range: i32,      // frang in RST, km
+    pub range_sep: i32,        // rsep in RST, km
+    pub rx_rise: i32,          // rxrise in RST, microseconds?
+    pub num_ranges: i32,       // nrang in RST
+    pub azimuth: Vec<f32>,     // azm in RST, degrees?
+    pub slant_range: Vec<f32>, // srng in RST, km
+    pub ival: Vec<f32>,        // ival in RST
+    pub index: Vec<i32>,       // inx in RST
 }
 
 #[derive(Debug, Default)]
@@ -39,6 +41,7 @@ pub struct GridPoint {
     pub magnetic_lat: f32,          // mlat in RST
     pub magnetic_lon: f32,          // mlon in RST
     pub azimuth: f32,               // azm in RST, degrees?
+    pub slant_range: f32,           // srng in RST, km
     pub velocity_median: f32,       // vel.median in RST, m/s
     pub velocity_median_north: f32, // vel.median_n in RST, m/s
     pub velocity_median_east: f32,  // vel.median_e in RST, m/s
@@ -51,6 +54,7 @@ pub struct GridPoint {
 impl GridPoint {
     pub fn clear(&mut self) {
         self.azimuth = 0.0;
+        self.slant_range = 0.0;
         self.velocity_median_north = 0.0;
         self.velocity_median_east = 0.0;
         self.velocity_stddev = 0.0;
@@ -66,9 +70,9 @@ impl GridPoint {
 pub struct GridTable {
     pub start_time: DateTime<Utc>, // st_time in RST
     pub end_time: DateTime<Utc>,   // ed_time in RST
-    pub channel: i32,              // chn in RST
+    pub channel: i16,              // chn in RST
     pub status: i32,               // status in RST
-    pub station_id: i32,           // st_id in RST
+    pub station_id: i16,           // st_id in RST
     pub program_id: i32,           // prog_id in RST
     pub num_scans: i32,            // nscan in RST
     pub num_points_npnt: i32,      // npnt in RST, number of grid points
@@ -98,7 +102,9 @@ impl GridTable {
     }
 
     /// Tests whether gridded data should be written to a file.
-    /// Called GridTableTest in RST
+    /// Modifies self, averaging measurements within grid cells if returning true.
+    ///
+    /// Called `GridTableTest` in RST.
     pub fn test(&mut self, scan: &RadarScan) -> bool {
         let time_micros =
             (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
@@ -149,6 +155,9 @@ impl GridTable {
                         .velocity_median_east
                         .atan2(point.velocity_median_north.clone())
                         .to_degrees();
+
+                    // Calculate average slant range of velocity vector
+                    point.slant_range = point.slant_range / point.count as f32;
 
                     // Calculate weighted mean of spectral width and power
                     point.spectral_width_median /= &point.spectral_width_stddev;
@@ -206,7 +215,7 @@ impl GridTable {
 
         for range in 0..grid_beam.num_ranges {
             // Calculate geographic azimuth and elevation to scatter point
-            let (azimuth_geo, _) = rpos_range_beam_azimuth_elevation(
+            let (azimuth_geo, _, _) = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
                 range,
                 time.year(),
@@ -217,8 +226,8 @@ impl GridTable {
                 altitude,
                 chisham,
             )?;
-            // Calculate magnetic latitude, longitude, and azimuth of scatter point
-            let (mut mag_loc, mut azimuth_mag) = rpos_inv_mag(
+            // Calculate magnetic latitude, longitude, azimuth, and slant range of scatter point
+            let (mut mag_loc, mut azimuth_mag, srng_mag) = rpos_inv_mag(
                 grid_beam.beam,
                 range,
                 time.year(),
@@ -233,7 +242,7 @@ impl GridTable {
 
             // Ensure magnetic azimuth and longitude between 0-360 degrees
             if azimuth_mag < 0.0 {
-                azimuth_mag += 360.0;
+                azimuth_mag += 2.0 * PI;
             }
             if mag_loc[0] < 0.0 {
                 mag_loc[0] += 2.0 * PI as f64;
@@ -251,7 +260,7 @@ impl GridTable {
             let lon_spacing = (360.0 * grid_lat.abs().to_radians().cos() + 0.5).floor() / 360.0;
 
             // Calculate magnetic grid cell longitude
-            let _grid_lon = (mag_loc[0].to_degrees() as f32 * lon_spacing + 0.5) / lon_spacing;
+            let grid_lon = (mag_loc[0].to_degrees() as f32 * lon_spacing + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
             let reference: i32;
@@ -277,12 +286,13 @@ impl GridTable {
             point.count += 1;
 
             // Set magnetic lat/lon for GridPoint
-            point.magnetic_lat = mag_loc[1].to_degrees() as f32;
-            point.magnetic_lon = mag_loc[0].to_degrees() as f32;
+            point.magnetic_lat = grid_lat;
+            point.magnetic_lon = grid_lon;
 
-            // Set index, magnetic azimuth, inertial velocity correction factor of beam
+            // Set index, magnetic azimuth, slant range, and inertial velocity correction factor of beam
             grid_beam.index.push(index as i32);
             grid_beam.azimuth.push(azimuth_mag);
+            grid_beam.slant_range.push(srng_mag);
             grid_beam
                 .ival
                 .push(velocity_correction * (azimuth_geo + 90.0).to_radians().cos());
@@ -367,6 +377,9 @@ impl GridTable {
                 // Add magnetic azimuth of radar beam/gate measurement
                 grid_cell.azimuth += grid_beam.azimuth[range];
 
+                // Add slant range of gate measurement
+                grid_cell.slant_range += grid_beam.slant_range[range];
+
                 if iflg {
                     grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
@@ -441,6 +454,7 @@ impl GridTable {
         let magnetic_lat = valid_points.iter().map(|&p| p.magnetic_lat).collect();
         let magnetic_lon = valid_points.iter().map(|&p| p.magnetic_lon).collect();
         let azimuth = valid_points.iter().map(|&p| p.azimuth).collect();
+        let slant_range = valid_points.iter().map(|&p| p.slant_range).collect();
         let index: Vec<i32> = valid_points.iter().map(|&p| p.reference).collect();
         let velocity_median = valid_points.iter().map(|&p| p.velocity_median).collect();
         let velocity_stddev = valid_points.iter().map(|&p| p.velocity_stddev).collect();
@@ -454,7 +468,7 @@ impl GridTable {
             .iter()
             .map(|&p| p.spectral_width_stddev)
             .collect();
-        let station_ids: Vec<i16> = iter::repeat(self.station_id as i16)
+        let station_ids: Vec<i16> = iter::repeat(self.station_id)
             .take(valid_points.len())
             .collect();
         let channels: Vec<i16> = iter::repeat(self.channel as i16)
@@ -483,7 +497,7 @@ impl GridTable {
         );
         grid_rec.insert(
             "start.second".to_string(),
-            (self.start_time.second() as i16).into(),
+            (self.start_time.second() as f64 + (self.start_time.nanosecond() as f64) * 1e-9).into(),
         );
         grid_rec.insert("end.year".to_string(), (self.end_time.year() as i16).into());
         grid_rec.insert(
@@ -498,7 +512,7 @@ impl GridTable {
         );
         grid_rec.insert(
             "end.second".to_string(),
-            (self.end_time.second() as i16).into(),
+            (self.end_time.second() as f64 + (self.end_time.nanosecond() as f64) * 1e-9).into(),
         );
         grid_rec.insert(
             "stid".to_string(),
@@ -582,6 +596,10 @@ impl GridTable {
             Array::from_vec(azimuth).into_dyn().into(),
         );
         grid_rec.insert(
+            "vector.srng".to_string(),
+            Array::from_vec(slant_range).into_dyn().into(),
+        );
+        grid_rec.insert(
             "vector.stid".to_string(),
             Array::from_vec(station_ids).into_dyn().into(),
         );
@@ -620,6 +638,6 @@ impl GridTable {
             );
         }
 
-        Ok(GridRecord { data: grid_rec })
+        GridRecord::new(&mut grid_rec).map_err(|e| e.into())
     }
 }

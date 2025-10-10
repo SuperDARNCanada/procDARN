@@ -137,7 +137,7 @@ pub struct GridArgs {
         long,
         visible_alias = "pmax",
         value_parser,
-        default_value = "2500",
+        default_value = "60",
         requires = "op_param_flag"
     )]
     pub max_power: f32,
@@ -147,7 +147,7 @@ pub struct GridArgs {
         long,
         visible_alias = "vmax",
         value_parser,
-        default_value = "60",
+        default_value = "2500",
         requires = "op_param_flag"
     )]
     pub max_velocity: f32,
@@ -177,7 +177,7 @@ pub struct GridArgs {
         long,
         visible_alias = "pmin",
         value_parser,
-        default_value = "35",
+        default_value = "3",
         requires = "op_param_flag"
     )]
     pub min_power: f32,
@@ -187,7 +187,7 @@ pub struct GridArgs {
         long,
         visible_alias = "vmin",
         value_parser,
-        default_value = "3",
+        default_value = "35",
         requires = "op_param_flag"
     )]
     pub min_velocity: f32,
@@ -338,6 +338,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         current_scans.push(RadarScan::default());
     }
     let mut found_record = false;
+    let mut end_time_set = false;
     let mut index = 0;
     let mut num_scans = 0;
     let mut record_idx: Option<usize> = None;
@@ -348,7 +349,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
     for infile in args.infiles.clone().into_iter() {
         if args.verbose {
-            println!("Gridding file {}", infile.display())
+            println!("\nGridding file {}", infile.display())
         };
         let fitacf_records = dmap::read_fitacf(infile.clone())?;
 
@@ -461,7 +462,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                                     "No records with set `scan` flag in {}",
                                     infile.display()
                                 ))
-                            })?);
+                            })? + x);
                     } else {
                         return Err(GridError::BadArgs(
                             "No records match requested scan time".to_string(),
@@ -471,43 +472,59 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
                 // Read the first full scan of data corresponding to grid start datetime
                 let first_idx = record_idx.unwrap_or_else(|| 0);
-                let this_scan =
-                    RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length);
-                found_scan = this_scan.is_ok();
-                current_scans[0] = this_scan?.0;
+                if args.verbose {
+                    println!("Gridding starting at record {first_idx}");
+                }
+                if let Ok((scan, recs_read)) = RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length) {
+                    found_scan = true;
+                    current_scans[0] = scan;
+                    record_idx = Some(record_idx.unwrap() + recs_read);
+                } else {
+                    found_scan = false;
+                }
             }
         }
 
-        if found_record {
-            end_time = match &args.end_time {
-                Some(t) => {
-                    let time_string = format!("{}", t);
-                    let date_string = match &args.end_date {
-                        Some(d) => format!("{}", d),
-                        None => current_scans[0].start_time.format("%Y%m%d").to_string(),
-                    };
-                    NaiveDateTime::parse_from_str(
-                        format!("{} {}", date_string, time_string).as_str(),
-                        "%Y%m%d %H:%M",
-                    )
-                    .map_err(|_| {
-                        GridError::BadArgs(
-                            "Unable to parse end date and/or time from options".to_string(),
+        if found_record && !end_time_set {
+            if let Some(x) = &args.interval {
+                let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
+                let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
+                end_time = Some(start_time + dur);
+            } else {
+                end_time = match &args.end_time {
+                    Some(t) => {
+                        let time_string = format!("{}", t);
+                        let date_string = match &args.end_date {
+                            Some(d) => format!("{}", d),
+                            None => current_scans[0].start_time.format("%Y%m%d").to_string(),
+                        };
+                        NaiveDateTime::parse_from_str(
+                            format!("{} {}", date_string, time_string).as_str(),
+                            "%Y%m%d %H:%M",
                         )
-                    })?
-                    .and_utc()
-                    .into()
-                }
-                None => match &args.interval {
-                    Some(x) => {
-                        let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
-                        let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
-                        Some(start_time + dur)
+                            .map_err(|_| {
+                                GridError::BadArgs(
+                                    "Unable to parse end date and/or time from options".to_string(),
+                                )
+                            })?
+                            .and_utc()
+                            .into()
                     }
-                    None => None,
-                },
-            };
-            found_record = false
+                    None => None
+                };
+            }
+            if num_averages == 1 && end_time.is_some() {
+                if let Some(x) = &args.interval {
+                    let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
+                    let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
+                    end_time = Some(end_time.unwrap() - dur);
+                } else {
+                    let td = current_scans[0].end_time - current_scans[0].start_time
+                        + TimeDelta::seconds(15);
+                    end_time = Some(end_time.unwrap() + td);
+                }
+            }
+            end_time_set = true;
         }
 
         let year = start_time.year() as c_int;
@@ -658,6 +675,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         }
     }
 
+    println!("Done gridding, {} records", records_for_file.len());
     // Write to file
     Ok(records_for_file)
 }

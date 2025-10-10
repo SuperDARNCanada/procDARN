@@ -52,7 +52,7 @@ impl RadarBeam {
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarScan {
-    pub station_id: i32,           // stid in RST
+    pub station_id: i16,           // stid in RST
     pub version_major: i32,        // version.major in RST
     pub version_minor: i32,        // version.minor in RST
     pub start_time: DateTime<Utc>, // st_time in RST
@@ -112,8 +112,9 @@ impl RadarScan {
             return Err(ProcdarnError::ZeroRecords("in `get_first_scan()`"));
         }
         let mut rec = &fit_records[0];
+        let start_time = get_datetime(rec)?;
         let mut scan: RadarScan = RadarScan {
-            station_id: i32::try_from(
+            station_id: i16::try_from(
                 rec.get(&"stid".to_string())
                     .ok_or(ProcdarnError::MissingField("stid"))?
                     .clone(),
@@ -131,7 +132,14 @@ impl RadarScan {
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("radar.revision.minor"))?,
-            start_time: get_datetime(rec)?,
+            start_time: match scan_length {
+                Some(x) => {
+                    let t = x as i64 * start_time.timestamp().div_euclid(x as i64);
+                    DateTime::from_timestamp(t, 0)
+                        .ok_or(ProcdarnError::Timestamp(format!("{t}")))?
+                }
+                None => start_time,
+            },
             ..Default::default()
         };
 

@@ -12,36 +12,36 @@ pub fn fit_seek(
     for rec in fitacf_records {
         let tstamp = NaiveDate::from_ymd_opt(
             i32::try_from(
-                rec.get(&"year".to_string())
-                    .ok_or(ProcdarnError::MissingField("year"))?
+                rec.get(&"time.yr".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.yr"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"month".to_string())
-                    .ok_or(ProcdarnError::MissingField("month"))?
+                rec.get(&"time.mo".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.mo"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"day".to_string())
-                    .ok_or(ProcdarnError::MissingField("day"))?
+                rec.get(&"time.dy".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.dy"))?
                     .clone(),
             )?,
         )
         .ok_or(ProcdarnError::Timestamp("could not parse date".to_string()))?
         .and_hms_opt(
             u32::try_from(
-                rec.get(&"hour".to_string())
-                    .ok_or(ProcdarnError::MissingField("hour"))?
+                rec.get(&"time.hr".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.hr"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"minute".to_string())
-                    .ok_or(ProcdarnError::MissingField("minute"))?
+                rec.get(&"time.mt".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.mt"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"second".to_string())
-                    .ok_or(ProcdarnError::MissingField("second"))?
+                rec.get(&"time.sc".to_string())
+                    .ok_or(ProcdarnError::MissingField("time.sc"))?
                     .clone(),
             )?,
         )

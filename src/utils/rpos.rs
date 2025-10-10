@@ -393,7 +393,7 @@ fn rpos_geo(
     rx_rise_time: f32,
     altitude: f32,
     chisham: bool,
-) -> Result<Coor3D, GridError> {
+) -> Result<Coor4D, GridError> {
     let mut beam_edge: f32 = 0.0;
     let mut range_edge: f32 = 0.0;
 
@@ -433,7 +433,7 @@ fn rpos_geo(
     };
 
     // Calculate the geocentric coordinates of the field point
-    fieldpoint_height(
+    let result = fieldpoint_height(
         Coor3D::geo(
             hdw.latitude as f64,
             hdw.longitude as f64,
@@ -444,7 +444,14 @@ fn rpos_geo(
         field_point_height,
         distance,
         chisham,
-    )
+    )?;
+
+    Ok(Coor4D::raw(
+        result[0],
+        result[1],
+        result[2],
+        distance as f64,
+    ))
 }
 
 pub fn rpos_range_beam_azimuth_elevation(
@@ -457,7 +464,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     rx_rise: f32,
     altitude: f32,
     chisham: bool,
-) -> Result<(f32, f32), GridError> {
+) -> Result<(f32, f32, f32), GridError> {
     let site_location_geo = Coor3D::geo(
         hdw.latitude as f64,
         hdw.longitude as f64,
@@ -485,7 +492,9 @@ pub fn rpos_range_beam_azimuth_elevation(
     )?;
     // Convert range/beam position from geocentric coordinates to global Cartesian coordinates
     // let cell_cartesian = ellipse.cartesian(&cell_geoc);
-    let cell_cartesian = geocentric_to_cartesian(&cell_geoc);
+    let slant_range = cell_geoc[3];
+    let cell_wout_srng = Coor3D::raw(cell_geoc[0], cell_geoc[1], cell_geoc[2]);
+    let cell_cartesian = geocentric_to_cartesian(&cell_wout_srng);
 
     // Convert radar geocentric coordinates to global Cartesian coordinates
     // let site_location_cartesian = ellipse.cartesian(&site_location_geo);
@@ -499,7 +508,7 @@ pub fn rpos_range_beam_azimuth_elevation(
 
     // Convert the normalized vector from radar-to-range/beam cell into local south/east/vertical
     // (horizontal) coordinates
-    let local_del = cartesian_to_local(&cell_geoc, &normed_del);
+    let local_del = cartesian_to_local(&cell_wout_srng, &normed_del);
 
     // Normalize the local horizontal vector
     let mut normed_local_del = norm_vector(&local_del);
@@ -534,7 +543,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     );
     let azimuth = normed_local_del[1].atan2(-normed_local_del[0]);
 
-    Ok((azimuth as f32, elevation as f32))
+    Ok((azimuth as f32, elevation as f32, slant_range as f32))
 }
 
 pub fn rpos_inv_mag(
@@ -548,7 +557,7 @@ pub fn rpos_inv_mag(
     altitude: f32,
     chisham: bool,
     _old_aacgm: bool,
-) -> Result<(Coor2D, f32), GridError> {
+) -> Result<(Coor2D, f32, f32), GridError> {
     let site_location_geod = Coor3D::geo(
         hdw.latitude as f64,
         hdw.longitude as f64,
@@ -577,7 +586,9 @@ pub fn rpos_inv_mag(
 
     // Convert range/beam position from geocentric coordinates to global Cartesian coordinates
     // let cell_cartesian = ellipse.cartesian(&cell_geoc);
-    let cell_cartesian = geocentric_to_cartesian(&cell_geoc);
+    let cell_wout_srng = Coor3D::raw(cell_geoc[0], cell_geoc[1], cell_geoc[2]);
+    let slant_range = cell_geoc[3];
+    let cell_cartesian = geocentric_to_cartesian(&cell_wout_srng);
 
     let site_location_geoc =
         geodetic_to_geocentric(&Coor2D::raw(site_location_geod[0], site_location_geod[1]));
@@ -598,7 +609,7 @@ pub fn rpos_inv_mag(
 
     // Convert the normalized vector from radar-to-range/beam cell into local south/east/vertical
     // (horizontal) coordinates
-    let local_del = cartesian_to_local(&cell_geoc, &normed_del);
+    let local_del = cartesian_to_local(&cell_wout_srng, &normed_del);
 
     // Normalize the local horizontal vector
     let mut normed_local_del = norm_vector(&local_del);
@@ -655,7 +666,7 @@ pub fn rpos_inv_mag(
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
-    let pointing_loc = fieldpoint_sphere(cell_geoc, azimuth, range_sep as f64);
+    let pointing_loc = fieldpoint_sphere(cell_wout_srng, azimuth, range_sep as f64);
 
     // TODO: Accept old_aacgm option
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
@@ -686,5 +697,9 @@ pub fn rpos_inv_mag(
     // coordinates
     let azimuth = fieldpoint_azimuth(mag_lat, mag_lon, pointing_mag_lat, pointing_mag_lon);
 
-    Ok((Coor2D::geo(mag_lat, mag_lon), azimuth as f32))
+    Ok((
+        Coor2D::geo(mag_lat, mag_lon),
+        azimuth as f32,
+        slant_range as f32,
+    ))
 }

@@ -229,12 +229,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
-name = "bytemuck"
-version = "1.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8334215b81e418a0a7bdb8ef0849474f40bb10c8b71f1c4ed315cff49f32494d"
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,14 +565,15 @@ dependencies = [
 
 [[package]]
 name = "dmap"
-version = "0.1.6"
-source = "git+https://github.com/SuperDARNCanada/dmap.git?tag=v0.1.6#50e1041b14aea8301c5e1b75482972367e9b3874"
+version = "0.3.0"
+source = "git+https://github.com/SuperDARNCanada/dmap.git?tag=v0.3.0#0fa5ba0e13a5bf95256b06f50345cdd6c52fae92"
 dependencies = [
  "bzip2",
  "indexmap 2.6.0",
  "itertools 0.13.0",
  "lazy_static",
  "numpy",
+ "paste",
  "pyo3",
  "rayon",
  "thiserror",
@@ -993,9 +988,7 @@ dependencies = [
 
 [[package]]
 name = "igrf"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeb750ac62b7b81c05b0090d0fc42cdab0ec685835ee6a83a51aad21a15fc79a"
+version = "0.2.1"
 dependencies = [
  "thiserror",
  "time",
@@ -1422,6 +1415,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
 
 [[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1520,13 +1519,13 @@ dependencies = [
  "aacgmv2-rs",
  "approx",
  "assert_unordered",
- "bytemuck",
  "chrono",
  "clap 4.5.20",
  "criterion",
  "dmap",
  "geodesy",
  "git2",
+ "glob",
  "igrf",
  "indexmap 2.6.0",
  "is_close",
