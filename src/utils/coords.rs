@@ -1,5 +1,8 @@
+use crate::error::ProcdarnError;
+use igrf::declination;
 use std::f64::consts::PI;
 use std::fmt::Display;
+use time::Date;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct GeocentricCoords {
@@ -11,15 +14,17 @@ pub struct GeocentricCoords {
     pub rad: f64,
 }
 impl GeocentricCoords {
+    /// Constructor, with `lat`, `lon` in radians.
     pub fn new(lat: f64, lon: f64, rad: f64) -> GeocentricCoords {
         GeocentricCoords { lat, lon, rad }
     }
+
     /// Constructor with input `lat`, `lon` in degrees.
-    pub(crate) fn geo(lat: f64, lon: f64, rad: f64) -> GeocentricCoords {
+    pub fn geo(lat: f64, lon: f64, rad: f64) -> GeocentricCoords {
         GeocentricCoords::new(lat.to_radians(), lon.to_radians(), rad)
     }
 
-    /// Converts to geodetic coordinates. The WGS84 Earth model is used.
+    /// Converts `self` to [`GeodeticCoords`]. The WGS84 Earth model is used.
     pub fn to_geodetic(&self) -> GeodeticCoords {
         let semi_major_axis: f64 = 6378.137;
         let flattening: f64 = 1.0 / 298.257223563;
@@ -38,6 +43,7 @@ impl GeocentricCoords {
         GeodeticCoords::new(gdlat, gdlon, rho)
     }
 
+    /// Converts `self` to [`CartesianCoords`].
     pub fn to_cartesian(&self) -> CartesianCoords {
         let x = self.rad * self.lat.cos() * self.lon.cos();
         let y = self.rad * self.lat.cos() * self.lon.sin();
@@ -45,8 +51,8 @@ impl GeocentricCoords {
         CartesianCoords { x, y, z }
     }
 
-    /// Convert a Cartesian vector `v` centered at `self` into local south/east/vertical coordinates.
-    pub(crate) fn cartesian_to_local(&self, v: &CartesianCoords) -> LocalCartesianCoords {
+    /// Convert a [`CartesianCoords`] vector `v` centered at `self` into [`LocalCartesianCoords`].
+    pub fn cartesian_to_local(&self, v: &CartesianCoords) -> LocalCartesianCoords {
         // Rotate v about the z-axis by the longitude
         let sx = self.lon.cos() * v.x + self.lon.sin() * v.y;
         let sy = -self.lon.sin() * v.x + self.lon.cos() * v.y;
@@ -63,6 +69,9 @@ impl GeocentricCoords {
         LocalCartesianCoords::new(tx, ty, tz)
     }
 
+    /// Converts `self` into AACGMv2 coordinates.
+    ///
+    /// See https://superdarn.thayer.dartmouth.edu/aacgm.html and doi:10.1002/2014JA020264
     pub(crate) unsafe fn aacgmv2_convert(&self) -> GeocentricCoords {
         let mut mag_coords = GeocentricCoords::default();
         unsafe {
@@ -81,6 +90,18 @@ impl GeocentricCoords {
 
         mag_coords
     }
+
+    /// Calculates the magnetic field at this location.
+    pub(crate) fn igrf_field(&self, date: Date) -> Result<CartesianCoords, ProcdarnError> {
+        // Calculate the magnetic field vector in nT at the geocentric spherical cell position
+        let igrf_field = declination(self.lat.to_degrees(), self.lon.to_degrees(), self.rad, date)?;
+
+        Ok(CartesianCoords::new(
+            igrf_field.x,
+            igrf_field.y,
+            igrf_field.z,
+        ))
+    }
 }
 impl Display for GeocentricCoords {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -95,15 +116,16 @@ impl Display for GeocentricCoords {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct GeodeticCoords {
-    /// Latitude (degrees)
+    /// Latitude (radians)
     pub lat: f64,
-    /// Longitude (degrees)
+    /// Longitude (radians)
     pub lon: f64,
     /// Distance from the center of the Earth (km)
     pub rad: f64,
 }
 
 impl GeodeticCoords {
+    /// Constructor with input `lat`, `lon` in radians.
     pub fn new(lat: f64, lon: f64, rad: f64) -> GeodeticCoords {
         GeodeticCoords { lat, lon, rad }
     }
@@ -112,7 +134,7 @@ impl GeodeticCoords {
         GeodeticCoords::new(lat.to_radians(), lon.to_radians(), rad)
     }
 
-    /// Converts to geocentric spherical coordinates. The WGS84 Earth model is used.
+    /// Converts to [`GeocentricCoords`]. The WGS84 Earth model is used.
     pub fn to_geocentric(&self) -> GeocentricCoords {
         let semi_major_axis: f64 = 6378.137;
         let flattening: f64 = 1.0 / 298.257223563;
@@ -133,15 +155,11 @@ impl GeodeticCoords {
         GeocentricCoords::new(gclat, gclon, rho)
     }
 
-    /// Corrects a look direction at geodetic coordinates to account for the oblateness of the Earth.
-    ///
-    /// `az` and `el` are given in radians.
-    ///
-    /// Called geocnvrt in cnvtcoord.c of RST
-    pub(crate) fn correct_look_dir(&self, az: f64, el: f64) -> (f64, f64) {
-        let kxg = el.cos() * az.sin();
-        let kyg = el.cos() * az.cos();
-        let kzg = el.sin();
+    /// Corrects a vector `v` at `self` to account for the oblateness of the Earth.
+    pub(crate) fn correct_look_dir(&self, v: &mut LocalAngularCoords) {
+        let kxg = v.el.cos() * v.az.sin();
+        let kyg = v.el.cos() * v.az.cos();
+        let kzg = v.el.sin();
 
         let point_gc = self.to_geocentric();
         let del = self.lat - point_gc.lat;
@@ -150,10 +168,8 @@ impl GeodeticCoords {
         let kyr = kyg * del.cos() + kzg * del.sin();
         let kzr = -kyg * del.sin() + kzg * del.cos();
 
-        let ral = kxr.atan2(kyr);
-        let rel = (kzr / (kxr * kxr + kyr * kyr).sqrt()).atan();
-
-        (ral, rel)
+        v.az = kxr.atan2(kyr);
+        v.el = (kzr / (kxr * kxr + kyr * kyr).sqrt()).atan();
     }
 }
 impl Display for GeodeticCoords {
@@ -303,11 +319,10 @@ mod tests {
     fn test_correct_look_dir() {
         let rel = 1e-9;
         let point = GeodeticCoords::geo(68.413, -133.769, 0.0);
-        let az = -2.429550020_f64;
-        let el = 38.913774588_f64;
-        let (az, el) = point.correct_look_dir(az.to_radians(), el.to_radians());
-        assert_relative_eq!(az.to_degrees(), -2.425048105, max_relative = rel);
-        assert_relative_eq!(el.to_degrees(), 38.781910399, max_relative = rel);
+        let mut v = LocalAngularCoords::from_degrees(-2.429550020, 38.913774588, 0.0);
+        point.correct_look_dir(&mut v);
+        assert_relative_eq!(v.az.to_degrees(), -2.425048105, max_relative = rel);
+        assert_relative_eq!(v.el.to_degrees(), 38.781910399, max_relative = rel);
     }
 
     #[test]
@@ -317,10 +332,24 @@ mod tests {
         let point = GeocentricCoords::geo(69.917246, 226.029209, 114.891407);
         let mag_point: GeocentricCoords;
         unsafe {
+            aacgmv2_rs::AACGM_v2_SetDateTime(2025, 7, 12, 0, 0, 0);
             mag_point = point.aacgmv2_convert();
         }
         assert_relative_eq!(mag_point.lat.to_degrees(), 72.507253, max_relative = rel);
         assert_relative_eq!(mag_point.lon.to_degrees(), -81.359931, max_relative = rel);
         assert_relative_eq!(mag_point.rad, 1.016164, max_relative = rel);
+    }
+
+    #[test]
+    fn test_igrf_field() {
+        let rel = 1e-2;
+        let point = GeocentricCoords::geo(69.51941199, -133.91889036, 6474.25014983);
+
+        let igrf_field = point
+            .igrf_field(Date::from_calendar_date(2025, time::Month::January, 1).unwrap())
+            .unwrap();
+        assert_relative_eq!(igrf_field.x, -7334.09740294, max_relative = rel);
+        assert_relative_eq!(igrf_field.y, 2496.73900915, max_relative = rel);
+        assert_relative_eq!(igrf_field.z, -53940.93134632, max_relative = rel);
     }
 }

@@ -1,15 +1,13 @@
 use crate::error::ProcdarnError;
 use crate::gridding::grid::GridError;
 use crate::gridding::grid_table::RADIUS_EARTH;
-use crate::utils::coords::{
-    CartesianCoords, GeocentricCoords, GeodeticCoords, LocalAngularCoords, MagneticCoords,
-};
+use crate::utils::coords::{GeocentricCoords, GeodeticCoords, LocalAngularCoords, MagneticCoords};
 use crate::utils::hdw::HdwInfo;
-use igrf::declination;
 use std::f64::consts::PI;
 use time::Date;
 
 /// Calculates the slant range to a range gate in km.
+///
 /// Called slant_range in cnvtcoord.c of RST
 pub fn slant_range(
     first_range: i32,
@@ -26,20 +24,20 @@ pub fn slant_range(
         * 0.15
 }
 
-/// Calculate a destination point (lat, lon) from a start point, distance, and bearing in degrees
-/// East of North using the Haversine formula.
+/// Calculates the coordinates from travelling along `look_dir` (ignoring elevation angle) from
+/// `start`.
+///
 /// Called fldpnt_sph in invmag.c of RST
-fn fieldpoint_sphere(start: GeocentricCoords, bearing: f64, range: f64) -> GeocentricCoords {
-    // Solving spherical triangle
+fn fieldpoint_sphere(start: GeocentricCoords, look_dir: &LocalAngularCoords) -> GeocentricCoords {
     let c_side = PI / 2.0 - start.lat;
     let a_angle: f64;
-    if bearing > 180.0 {
-        a_angle = (bearing - 360.0).to_radians();
+    if look_dir.az > PI {
+        a_angle = look_dir.az - 2.0 * PI;
     } else {
-        a_angle = bearing.to_radians();
+        a_angle = look_dir.az;
     }
 
-    let b_side = range / start.rad;
+    let b_side = look_dir.range / start.rad;
     let mut arg = b_side.cos() * c_side.cos() + b_side.sin() * c_side.sin() * a_angle.cos();
 
     arg = arg.max(-1.0).min(1.0);
@@ -65,8 +63,9 @@ fn fieldpoint_sphere(start: GeocentricCoords, bearing: f64, range: f64) -> Geoce
     GeocentricCoords::new(end_lat, end_lon, 0.0)
 }
 
-/// Uses the Haversine formula to calculate bearing from a start point to an end point,
-/// assuming a spherical Earth. Inputs in degrees, output in radians.
+/// Uses the Haversine formula to calculate bearing in radians East of North from `start` to `end`,
+/// assuming a spherical Earth.
+///
 /// Called fldpnt_azm in invmag.c of RST
 fn fieldpoint_azimuth(start: &GeocentricCoords, end: &GeocentricCoords) -> f64 {
     let a_side = PI / 2.0 - end.lat;
@@ -91,9 +90,8 @@ fn fieldpoint_azimuth(start: &GeocentricCoords, end: &GeocentricCoords) -> f64 {
     bearing
 }
 
-/// Calculates the geocentric coordinates of a point located `direction` from `radar_location`,
-/// with `radar_location` given in geocentric coordinates [lon, lat, rho] and `direction` given
-/// in local azimuth, elevation, and slant range.
+/// Calculates the geocentric coordinates of a point located `direction` from `radar_location`.
+///
 /// Called fldpnt in cnvtcoord.c of RST.
 fn fieldpoint(
     radar_location: &GeocentricCoords,
@@ -143,6 +141,7 @@ fn fieldpoint(
 
 /// Calculate the geocentric coordinates of a radar field point using either the standard or
 /// Chisham virtual height model.
+///
 /// Called fldpnth in cnvtcoord.c of RST
 fn fieldpoint_height(
     point: &GeodeticCoords,
@@ -189,10 +188,11 @@ fn fieldpoint_height(
     let mut earth_rad_under_point = radar_radius; // Will update with calculations
     let mut point_rho;
 
-    let mut point_sph = GeocentricCoords::default();
-
     // This will prevent elevation angle from being NaN later on
     let range = if slant_range == 0.0 { 0.1 } else { slant_range };
+
+    let mut point_geoc = GeocentricCoords::default();
+    let mut look_dir = LocalAngularCoords::new(0.0, 0.0, range);
 
     let mut point_height = virtual_height + 1.0; // Initialize to make the below loop a do-while loop
     while (point_height - virtual_height).abs() > 0.5 {
@@ -217,15 +217,20 @@ fn fieldpoint_height(
             xel = angle_above_horizon;
         }
 
+        look_dir.el = xel;
+
         // Estimate the off-array-normal azimuth
         let off_boresight_rad = bearing_off_boresight.to_radians();
         let boresight_bearing_rad = boresight_bearing.to_radians();
         let tan_azimuth: f64;
-        if off_boresight_rad.cos() * off_boresight_rad.cos() - xel.sin() * xel.sin() < 0.0 {
+        if off_boresight_rad.cos() * off_boresight_rad.cos() - look_dir.el.sin() * look_dir.el.sin()
+            < 0.0
+        {
             tan_azimuth = 1e32;
         } else {
             tan_azimuth = (off_boresight_rad.sin() * off_boresight_rad.sin()
-                / (off_boresight_rad.cos() * off_boresight_rad.cos() - xel.sin() * xel.sin()))
+                / (off_boresight_rad.cos() * off_boresight_rad.cos()
+                    - look_dir.el.sin() * look_dir.el.sin()))
             .sqrt();
         }
         let azimuth: f64;
@@ -236,38 +241,41 @@ fn fieldpoint_height(
         }
 
         // Pointing azimuth in radians east of north
-        let xal = azimuth + boresight_bearing_rad;
+        look_dir.az = azimuth + boresight_bearing_rad;
 
         // Adjust azimuth and elevation for oblateness of the Earth
-        let (ral, _) = point.correct_look_dir(xal, xel);
+        point.correct_look_dir(&mut look_dir);
 
-        // Obtain the global spherical coordinates of the field point
-        let point_sph_new = fieldpoint(
-            &radar_geo,
-            &LocalAngularCoords::new(ral, angle_above_horizon, range),
-        );
-        if point_sph_new == point_sph {
+        // Adjust look dir to actual angle above horizon
+        look_dir.el = angle_above_horizon;
+
+        // Obtain the geocentric coordinates of the field point
+        let point_geoc_new = fieldpoint(&radar_geo, &look_dir);
+        if point_geoc_new == point_geoc {
             panic!("stagnation!!")
         } else {
-            point_sph = point_sph_new;
+            point_geoc = point_geoc_new;
         }
 
         // Recalculate the radius of the Earth beneath the field point
-        let geodetic = point_sph.to_geodetic();
+        let geodetic = point_geoc.to_geodetic();
         earth_rad_under_point = geodetic.rad;
 
-        point_height = point_sph.rad - earth_rad_under_point;
+        point_height = point_geoc.rad - earth_rad_under_point;
     }
 
-    Ok(point_sph)
+    Ok(point_geoc)
 }
 
-/// This function converts a gate/beam coordinate to geographic position. The height of the
-/// transformation is given by height - if this value is less than 90 then it is assumed to be the
-/// elevation angle from the radar. If center is not equal to zero, then the calculation is assumed
-/// to be for the center of the cell, not the edge. The calculated values are returned in geocentric
-/// coordinates.
-/// Called RPosGeo in cnvtcoord.c of RST
+/// Converts a gate/beam coordinate from the radar to [`GeocentricCoords`].
+///
+/// The height of the transformation is given by `height` - if it is less than 90, then it is
+/// assumed to be the elevation angle from the radar.
+///
+/// If center is not equal to zero, then the calculation is assumed to be for the center of the
+/// cell, not the edge.
+///
+/// Called `RPosGeo` in cnvtcoord.c of RST
 fn rpos_geo(
     center: bool,
     beam_num: i32,
@@ -334,6 +342,7 @@ fn rpos_geo(
     Ok((result, distance as f64))
 }
 
+/// Calculates the look direction vector to a range/beam cell from the radar.
 pub fn rpos_range_beam_azimuth_elevation(
     beam: i32,
     range: i32,
@@ -345,7 +354,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     altitude: f32,
     chisham: bool,
 ) -> Result<LocalAngularCoords, GridError> {
-    let site_location_geod = GeodeticCoords::new(
+    let radar_loc_geod = GeodeticCoords::new(
         hdw.latitude.to_radians() as f64,
         hdw.longitude.to_radians() as f64,
         0.0,
@@ -372,58 +381,41 @@ pub fn rpos_range_beam_azimuth_elevation(
     let cell_cartesian = cell_geoc.to_cartesian();
 
     // Convert radar geocentric coordinates to global Cartesian coordinates
-    // let site_location_cartesian = ellipse.cartesian(&site_location_geo);
-    let site_location_geoc = site_location_geod.to_geocentric();
-    let site_location_cartesian = site_location_geoc.to_cartesian();
+    let radar_loc_cartesian = radar_loc_geod.to_geocentric().to_cartesian();
 
     // Calculate vector from site to center of range/beam cell
-    let mut del = cell_cartesian - site_location_cartesian;
+    let mut look_dir_cart = cell_cartesian - radar_loc_cartesian;
+    look_dir_cart.norm();
 
-    // Normalize the vector
-    del.norm();
+    // Convert the radar->cell vector into local south/east/vertical coordinates
+    let mut look_dir_local = cell_geoc.cartesian_to_local(&look_dir_cart);
+    look_dir_local.norm();
 
-    // Convert the normalized vector from radar-to-range/beam cell into local south/east/vertical
-    // (horizontal) coordinates
-    let mut local_del = cell_geoc.cartesian_to_local(&del);
-
-    // Normalize the local horizontal vector
-    local_del.norm();
-
-    // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
-    let igrf_field = declination(
-        cell_geoc.lat.to_degrees(),
-        cell_geoc.lon.to_degrees(),
-        cell_geoc.rad,
-        Date::from_calendar_date(year, time::Month::January, 1)
-            .map_err(|_| ProcdarnError::Timestamp(format!("bad year: {year}")))?,
-    )?;
-
-    // Convert from north/east/down coordinates to south/east/up
-    let mut b_field = CartesianCoords {
-        x: igrf_field.x,
-        y: igrf_field.y,
-        z: igrf_field.z,
-    };
-
-    // Normalize the magnetic field vector
+    // Calculate the magnetic field vector in nT at the geocentric spherical cell position
+    let date = Date::from_calendar_date(year, time::Month::January, 1)
+        .map_err(|_| ProcdarnError::Timestamp(format!("bad year: {year}")))?;
+    let mut b_field = cell_geoc.igrf_field(date)?;
     b_field.norm();
 
-    // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
-    // orthogonal to the magnetic field at the range/beam position
-    local_del.up = -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
+    // Calculate a new local vertical component such that the radar->cell vector becomes
+    // orthogonal to the local magnetic field at the cell position
+    look_dir_local.up =
+        -(b_field.x * look_dir_local.south + b_field.y * look_dir_local.east) / b_field.z;
+    look_dir_local.norm();
 
-    // Normalize the new radar-to-range/beam vector
-    local_del.norm();
-
-    // Calculate the azimuth and elevation angles of the orthogonal radar-to-range/beam vector
-    let elevation = local_del
-        .up
-        .atan2((local_del.south * local_del.south + local_del.east * local_del.east).sqrt());
-    let azimuth = local_del.east.atan2(-local_del.south);
+    // Calculate the azimuth and elevation angles of the orthogonal radar->cell vector
+    let elevation = look_dir_local.up.atan2(
+        (look_dir_local.south * look_dir_local.south + look_dir_local.east * look_dir_local.east)
+            .sqrt(),
+    );
+    let azimuth = look_dir_local.east.atan2(-look_dir_local.south);
 
     Ok(LocalAngularCoords::new(azimuth, elevation, slant_range))
 }
 
+/// Calculates the magnetic coordinates of a range/beam cell.
+///
+/// Accounts for the virtual height using either the Chisham or standard virtual height models.
 pub fn rpos_inv_mag(
     beam: i32,
     range: i32,
@@ -447,7 +439,7 @@ pub fn rpos_inv_mag(
         _ => rx_rise,
     };
 
-    // Convert center of range/beam cell to geocentric latitude/longitude/altitude
+    // Convert center of range/beam cell to geocentric coordinates
     let (cell_geoc, slant_range) = rpos_geo(
         true,
         beam,
@@ -460,59 +452,41 @@ pub fn rpos_inv_mag(
         chisham,
     )?;
 
-    // Convert range/beam position from geocentric coordinates to global Cartesian coordinates
+    // Convert cell position from geocentric coordinates to global Cartesian coordinates
     let cell_cartesian = cell_geoc.to_cartesian();
 
-    let site_location_geoc = site_location_geod.to_geocentric();
-
     // Convert radar geocentric coordinates to global Cartesian coordinates
-    let site_location_cartesian = site_location_geoc.to_cartesian();
+    let radar_loc_cartesian = site_location_geod.to_geocentric().to_cartesian();
 
-    // Calculate vector from site to center of range/beam cell
-    let mut del = cell_cartesian - site_location_cartesian;
-
-    // Normalize the vector
+    // Calculate vector from radar->cell
+    let mut del = cell_cartesian - radar_loc_cartesian;
     del.norm();
 
     // Convert the normalized vector from cartesian into local south/east/vertical coordinates
     let mut local_del = cell_geoc.cartesian_to_local(&del);
-
-    // Normalize the local horizontal vector
     local_del.norm();
 
-    // Calculate the magnetic field vector in nT at the geocentric spherical range/beam position
-    let igrf_field = declination(
-        cell_geoc.lat.to_degrees(),
-        cell_geoc.lon.to_degrees(),
-        cell_geoc.rad,
-        Date::from_calendar_date(year, time::Month::January, 1)
-            .map_err(|_| ProcdarnError::Timestamp(format!("invalid year: {year}")))?,
-    )?;
-
-    let mut b_field = CartesianCoords::new(igrf_field.x, igrf_field.y, igrf_field.z);
-
-    // Normalize the magnetic field vector
+    // Calculate the magnetic field vector in nT at the geocentric spherical cell position
+    let date = Date::from_calendar_date(year, time::Month::January, 1)
+        .map_err(|_| ProcdarnError::Timestamp(format!("bad year: {year}")))?;
+    let mut b_field = cell_geoc.igrf_field(date)?;
     b_field.norm();
 
-    // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
+    // Calculate a new local vertical component such that the radar->cell vector becomes
     // orthogonal to the magnetic field at the range/beam position
     local_del.up = -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
-
-    // Normalize the new radar-to-range/beam vector
     local_del.norm();
 
-    // Calculate the azimuth angle of the orthogonal radar-to-range/beam vector
+    // Calculate the azimuth angle of the orthogonal radar->cell vector
     let azimuth = local_del.east.atan2(-local_del.south);
 
     // Get geodetic coordinates of cell location
     let cell_geod = cell_geoc.to_geodetic();
 
-    // Calculate virtual height of range/beam position
+    // Calculate virtual height of cell position
     let virtual_height = cell_geoc.rad - cell_geod.rad;
 
-    // TODO: Accept old_aacgm option
-    // Convert range/beam position from geocentric lat/lon at virtual height to AACGM magnetic
-    // lat/lon
+    // Convert cell coordinates from geocentric to AACGM magnetic coordinates
     let mut geoc_with_virtual_height = cell_geoc.clone();
     geoc_with_virtual_height.rad = virtual_height;
     let mag_coords: GeocentricCoords;
@@ -520,14 +494,14 @@ pub fn rpos_inv_mag(
         mag_coords = geoc_with_virtual_height.aacgmv2_convert();
     }
 
-    // Calculate pointing direction lat/lon given distance and bearing from the radar position
-    // at the field point radius
-    let mut pointing_loc = fieldpoint_sphere(cell_geoc, azimuth.to_degrees(), range_sep as f64);
+    // Calculate new point given bearing from the radar
+    let mut pointing_loc = fieldpoint_sphere(
+        cell_geoc,
+        &LocalAngularCoords::new(azimuth, 0.0, range_sep as f64),
+    );
     pointing_loc.rad = virtual_height;
 
-    // TODO: Accept old_aacgm option
-    // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
-    // magnetic coordinates
+    // Convert new point into AACGM magnetic coordinates
     let mut pointing_mag: GeocentricCoords;
     unsafe {
         pointing_mag = pointing_loc.aacgmv2_convert();
@@ -540,8 +514,7 @@ pub fn rpos_inv_mag(
         pointing_mag.lon += 2.0 * PI;
     }
 
-    // Calculate bearing (azimuth) to pointing direction lat/lon from the radar position in magnetic
-    // coordinates
+    // Calculate bearing (azimuth) to new point in magnetic coordinates
     let azimuth = fieldpoint_azimuth(&mag_coords, &pointing_mag);
     Ok((
         MagneticCoords::new(mag_coords.lat, mag_coords.lon),
@@ -560,21 +533,21 @@ mod tests {
     fn test_fieldpoint_sphere() {
         let rel = 1e-8;
         let start = GeocentricCoords::geo(69.51941199, -133.91889036, 6474.25014983);
-        let bearing = -2.56489722;
-        let range = 45.0;
-        let res = fieldpoint_sphere(start, bearing, range);
+        let mut v = LocalAngularCoords::from_degrees(-2.56489722, 0.0, 45.0);
+        let res = fieldpoint_sphere(start, &v);
         assert_relative_eq!(res.lat.to_degrees(), 69.91724618, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), 226.02920893, max_relative = rel);
 
         let start = GeocentricCoords::geo(88.01854931, -3.04211092, 7205.35616109);
-        let bearing = 134.27412781;
-        let res = fieldpoint_sphere(start, bearing, range);
+        v.az = 134.27412781_f64.to_radians();
+        println!("v: {v:?}");
+        let res = fieldpoint_sphere(start, &v);
         assert_relative_eq!(res.lat.to_degrees(), 87.75409320, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), 3.51003980, max_relative = rel);
 
         let start = GeocentricCoords::geo(70.31822085, -70.16621865, 7178.67916230);
-        let bearing = 115.48199583;
-        let res = fieldpoint_sphere(start, bearing, range);
+        v.az = 115.48199583_f64.to_radians();
+        let res = fieldpoint_sphere(start, &v);
         assert_relative_eq!(res.lat.to_degrees(), 70.16115496, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), 290.78917074, max_relative = rel);
     }
@@ -759,21 +732,5 @@ mod tests {
             max_relative = rel
         );
         assert_relative_eq!(slant_range, 180.0);
-    }
-
-    #[test]
-    fn test_igrf_field() {
-        let rel = 1e-2;
-        let (lat, lon, alt) = (69.51941199, -133.91889036, 6474.25014983);
-        let igrf_field = declination(
-            lat,
-            lon,
-            alt,
-            Date::from_calendar_date(2025, time::Month::January, 1).unwrap(),
-        )
-        .unwrap();
-        assert_relative_eq!(igrf_field.x, -7334.09740294, max_relative = rel);
-        assert_relative_eq!(igrf_field.y, 2496.73900915, max_relative = rel);
-        assert_relative_eq!(igrf_field.z, -53940.93134632, max_relative = rel);
     }
 }

@@ -1,5 +1,5 @@
 pub mod channel;
-mod coords;
+pub mod coords;
 pub mod hdw;
 pub mod rawacf;
 pub mod rpos;
