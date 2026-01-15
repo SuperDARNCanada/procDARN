@@ -353,9 +353,9 @@ pub fn median_filter(
             let mut weight = 0;
 
             // Loop over beams
-            for x in bmin..bmax+1 {
+            for x in bmin..bmax + 1 {
                 // Loop over ranges
-                for y in rmin..rmax+1 {
+                for y in rmin..rmax + 1 {
                     // Loop over time
                     for z in 0..depth as usize {
                         // Loop over beams in time/beam combo
@@ -412,13 +412,15 @@ pub fn median_filter(
             // TODO: Figure out how to properly check param (RST does bitwise checks)
             // Perform velocity median filtering if specified
             let mut compare_fn: fn(&RadarCell) -> f32 = |x| x.velocity;
-            if param % 2 == 1 {  // i.e. bitmap of (param & 0x01) is nonzero
+            if param % 2 == 1 {
+                // i.e. bitmap of (param & 0x01) is nonzero
                 (out_cell.velocity, out_cell.velocity_error) =
                     calculate_median_sigma(&mut kernel, |x| x.velocity, compare_fn);
             }
 
             // Perform lambda power median filtering if specified
-            if (param / 2) % 2 == 1 {  // i.e. bitmap of (param & 0x02) is nonzero
+            if (param / 2) % 2 == 1 {
+                // i.e. bitmap of (param & 0x02) is nonzero
                 if isort == true {
                     compare_fn = |x| x.power_lin;
                 }
@@ -427,7 +429,8 @@ pub fn median_filter(
             }
 
             // Perform spectral width median filtering if specified
-            if (param / 4) % 2 == 1 {  // i.e. bitmap of (param & 0x04) is nonzero
+            if (param / 4) % 2 == 1 {
+                // i.e. bitmap of (param & 0x04) is nonzero
                 if isort == true {
                     compare_fn = |x| x.spectral_width_lin;
                 }
@@ -438,7 +441,8 @@ pub fn median_filter(
             }
 
             // Perform lag0 power median filtering if specified
-            if (param / 8) % 2 == 1 {  // i.e. bitmap of (param & 0x08) is nonzero
+            if (param / 8) % 2 == 1 {
+                // i.e. bitmap of (param & 0x08) is nonzero
                 if isort == true {
                     compare_fn = |x| x.power_lag_zero;
                 }

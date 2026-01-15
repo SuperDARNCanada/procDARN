@@ -1,11 +1,13 @@
 use crate::error::ProcdarnError;
 use crate::gridding::grid::GridError;
 use crate::gridding::grid_table::RADIUS_EARTH;
+use crate::utils::coords::{
+    CartesianCoords, GeocentricCoords, GeodeticCoords, LocalAngularCoords, MagneticCoords,
+};
 use crate::utils::hdw::HdwInfo;
 use igrf::declination;
 use std::f64::consts::PI;
 use time::Date;
-use crate::utils::coords::{CartesianCoords, GeocentricCoords, GeodeticCoords, LocalAngularCoords, MagneticCoords};
 
 /// Calculates the slant range to a range gate in km.
 /// Called slant_range in cnvtcoord.c of RST
@@ -20,10 +22,9 @@ pub fn slant_range(
     let lag_to_first_range = (first_range * 20 / 3) as f64; // microseconds
     let sample_separation = (range_sep * 20 / 3) as f64; // microseconds
 
-    (lag_to_first_range - rx_rise + ((range_gate - 1) as f64 * sample_separation) + range_edge) * 0.15
+    (lag_to_first_range - rx_rise + ((range_gate - 1) as f64 * sample_separation) + range_edge)
+        * 0.15
 }
-
-
 
 /// Calculate a destination point (lat, lon) from a start point, distance, and bearing in degrees
 /// East of North using the Haversine formula.
@@ -94,7 +95,10 @@ fn fieldpoint_azimuth(start: &GeocentricCoords, end: &GeocentricCoords) -> f64 {
 /// with `radar_location` given in geocentric coordinates [lon, lat, rho] and `direction` given
 /// in local azimuth, elevation, and slant range.
 /// Called fldpnt in cnvtcoord.c of RST.
-fn fieldpoint(radar_location: &GeocentricCoords, direction: &LocalAngularCoords) -> GeocentricCoords {
+fn fieldpoint(
+    radar_location: &GeocentricCoords,
+    direction: &LocalAngularCoords,
+) -> GeocentricCoords {
     /* Convert from global spherical [lon, lat, rho] to global Cartesian [x, y, z]
      * (rx,ry,rz: Earth centered) */
     let sin_colat = (PI / 2.0 - radar_location.lat).sin();
@@ -188,11 +192,7 @@ fn fieldpoint_height(
     let mut point_sph = GeocentricCoords::default();
 
     // This will prevent elevation angle from being NaN later on
-    let range = if slant_range == 0.0 {
-        0.1
-    } else {
-        slant_range
-    };
+    let range = if slant_range == 0.0 { 0.1 } else { slant_range };
 
     let mut point_height = virtual_height + 1.0; // Initialize to make the below loop a do-while loop
     while (point_height - virtual_height).abs() > 0.5 {
@@ -348,7 +348,7 @@ pub fn rpos_range_beam_azimuth_elevation(
     let site_location_geod = GeodeticCoords::new(
         hdw.latitude.to_radians() as f64,
         hdw.longitude.to_radians() as f64,
-        0.0
+        0.0,
     );
 
     let rx_rise_time = match rx_rise {
@@ -399,24 +399,26 @@ pub fn rpos_range_beam_azimuth_elevation(
     )?;
 
     // Convert from north/east/down coordinates to south/east/up
-    let mut b_field = CartesianCoords { x: igrf_field.x, y: igrf_field.y, z: igrf_field.z };
+    let mut b_field = CartesianCoords {
+        x: igrf_field.x,
+        y: igrf_field.y,
+        z: igrf_field.z,
+    };
 
     // Normalize the magnetic field vector
     b_field.norm();
 
     // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
     // orthogonal to the magnetic field at the range/beam position
-    local_del.up =
-        -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
+    local_del.up = -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
 
     // Normalize the new radar-to-range/beam vector
     local_del.norm();
 
     // Calculate the azimuth and elevation angles of the orthogonal radar-to-range/beam vector
-    let elevation = local_del.up.atan2(
-        (local_del.south * local_del.south + local_del.east * local_del.east)
-            .sqrt(),
-    );
+    let elevation = local_del
+        .up
+        .atan2((local_del.south * local_del.south + local_del.east * local_del.east).sqrt());
     let azimuth = local_del.east.atan2(-local_del.south);
 
     Ok(LocalAngularCoords::new(azimuth, elevation, slant_range))
@@ -494,8 +496,7 @@ pub fn rpos_inv_mag(
 
     // Calculate a new local vertical component such that the radar-to-range/beam vector becomes
     // orthogonal to the magnetic field at the range/beam position
-    local_del.up =
-        -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
+    local_del.up = -(b_field.x * local_del.south + b_field.y * local_del.east) / b_field.z;
 
     // Normalize the new radar-to-range/beam vector
     local_del.norm();
@@ -515,7 +516,9 @@ pub fn rpos_inv_mag(
     let mut geoc_with_virtual_height = cell_geoc.clone();
     geoc_with_virtual_height.rad = virtual_height;
     let mag_coords: GeocentricCoords;
-    unsafe { mag_coords = geoc_with_virtual_height.aacgmv2_convert(); }
+    unsafe {
+        mag_coords = geoc_with_virtual_height.aacgmv2_convert();
+    }
 
     // Calculate pointing direction lat/lon given distance and bearing from the radar position
     // at the field point radius
@@ -526,7 +529,9 @@ pub fn rpos_inv_mag(
     // Convert pointing direction position from geocentric lat/lon at virtual height to AACGM
     // magnetic coordinates
     let mut pointing_mag: GeocentricCoords;
-    unsafe { pointing_mag = pointing_loc.aacgmv2_convert(); }
+    unsafe {
+        pointing_mag = pointing_loc.aacgmv2_convert();
+    }
 
     // Make sure pointing_mag_lon lies between +/- 180 degrees
     if pointing_mag.lon - mag_coords.lon > PI {
@@ -545,12 +550,11 @@ pub fn rpos_inv_mag(
     ))
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use approx::assert_relative_eq;
     use chrono::TimeZone;
-    use super::*;
 
     #[test]
     fn test_fieldpoint_sphere() {
@@ -603,14 +607,30 @@ mod tests {
         let height = 300.0;
         let slant_range = 180.0;
         let chisham = true;
-        let res = fieldpoint_height(&point, bearing_off_boresight, boresight_bearing, height, slant_range, chisham).unwrap();
+        let res = fieldpoint_height(
+            &point,
+            bearing_off_boresight,
+            boresight_bearing,
+            height,
+            slant_range,
+            chisham,
+        )
+        .unwrap();
         assert_relative_eq!(res.lat.to_degrees(), 69.519411986, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), -133.918890359, max_relative = rel);
         assert_relative_eq!(res.rad, 6474.250149832, max_relative = rel);
 
         let bearing_off_boresight = 21.06;
         let slant_range = 810.0;
-        let res = fieldpoint_height(&point, bearing_off_boresight, boresight_bearing, height, slant_range, chisham).unwrap();
+        let res = fieldpoint_height(
+            &point,
+            bearing_off_boresight,
+            boresight_bearing,
+            height,
+            slant_range,
+            chisham,
+        )
+        .unwrap();
         assert_relative_eq!(res.lat.to_degrees(), 71.497889906, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), -117.673408068, max_relative = rel);
         assert_relative_eq!(res.rad, 6717.634104790, max_relative = rel);
@@ -620,7 +640,11 @@ mod tests {
     fn test_fieldpoint() {
         let rel = 1e-9;
         let radar_location = GeocentricCoords::geo(68.281017392, -133.769, 6359.668034912);
-        let direction = LocalAngularCoords::new(-2.425048105_f64.to_radians(), 38.913774588_f64.to_radians(), 180.0);
+        let direction = LocalAngularCoords::new(
+            -2.425048105_f64.to_radians(),
+            38.913774588_f64.to_radians(),
+            180.0,
+        );
         let res = fieldpoint(&radar_location, &direction);
         assert_relative_eq!(res.lat.to_degrees(), 69.519411986, max_relative = rel);
         assert_relative_eq!(res.lon.to_degrees(), -133.918890359, max_relative = rel);
@@ -633,13 +657,28 @@ mod tests {
         let beam: i32 = 0;
         let range: i32 = 0;
         let year: i32 = 2025;
-        let hdw: &HdwInfo = &HdwInfo::new(64, chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap()).unwrap();
+        let hdw: &HdwInfo = &HdwInfo::new(
+            64,
+            chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap(),
+        )
+        .unwrap();
         let first_range: f32 = 180.0;
         let range_sep: f32 = 45.0;
         let rx_rise: f32 = 0.0;
         let altitude: f32 = 300.0;
         let chisham: bool = true;
-        let res = rpos_range_beam_azimuth_elevation(beam, range, year, hdw, first_range, range_sep, rx_rise, altitude, chisham).unwrap();
+        let res = rpos_range_beam_azimuth_elevation(
+            beam,
+            range,
+            year,
+            hdw,
+            first_range,
+            range_sep,
+            rx_rise,
+            altitude,
+            chisham,
+        )
+        .unwrap();
         assert_relative_eq!(res.az.to_degrees(), -2.564897223, max_relative = rel);
         assert_relative_eq!(res.el.to_degrees(), 7.618535464, max_relative = 1e-2);
         assert_relative_eq!(res.range, 180.0, max_relative = rel);
@@ -650,7 +689,11 @@ mod tests {
         let center = true;
         let beam_num = 0;
         let range_gate = 0;
-        let hdw = HdwInfo::new(64, chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap()).unwrap();
+        let hdw = HdwInfo::new(
+            64,
+            chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap(),
+        )
+        .unwrap();
         let first_range = 180.0;
         let range_sep = 45.0;
         let rx_rise_time = 0.0;
@@ -666,7 +709,8 @@ mod tests {
             rx_rise_time,
             altitude,
             chisham,
-        ).unwrap();
+        )
+        .unwrap();
         assert_relative_eq!(end.lat.to_degrees(), 69.51941199, max_relative = rel);
         assert_relative_eq!(end.lon.to_degrees(), -133.91889036, max_relative = rel);
         assert_relative_eq!(end.rad, 6474.25014983, max_relative = rel);
@@ -684,7 +728,11 @@ mod tests {
         let beam_num = 0;
         let range_gate = 0;
         let year = 2025;
-        let hdw = HdwInfo::new(64, chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap()).unwrap();
+        let hdw = HdwInfo::new(
+            64,
+            chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap(),
+        )
+        .unwrap();
         let first_range = 180.0;
         let range_sep = 45.0;
         let rx_rise_time = 0.0;
@@ -701,10 +749,15 @@ mod tests {
             altitude,
             chisham,
             false,
-        ).unwrap();
+        )
+        .unwrap();
         assert_relative_eq!(coords.lon.to_degrees(), -80.964827995, max_relative = rel);
         assert_relative_eq!(coords.lat.to_degrees(), 72.131551884, max_relative = rel);
-        assert_relative_eq!(azimuth.to_degrees() as f64, -17.525081983, max_relative = rel);
+        assert_relative_eq!(
+            azimuth.to_degrees() as f64,
+            -17.525081983,
+            max_relative = rel
+        );
         assert_relative_eq!(slant_range, 180.0);
     }
 
@@ -716,8 +769,9 @@ mod tests {
             lat,
             lon,
             alt,
-            Date::from_calendar_date(2025, time::Month::January, 1).unwrap()
-        ).unwrap();
+            Date::from_calendar_date(2025, time::Month::January, 1).unwrap(),
+        )
+        .unwrap();
         assert_relative_eq!(igrf_field.x, -7334.09740294, max_relative = rel);
         assert_relative_eq!(igrf_field.y, 2496.73900915, max_relative = rel);
         assert_relative_eq!(igrf_field.z, -53940.93134632, max_relative = rel);

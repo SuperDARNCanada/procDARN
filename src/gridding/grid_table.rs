@@ -227,7 +227,7 @@ impl GridTable {
                 chisham,
             )?;
             let azimuth_geo = result.az;
-            
+
             // Calculate magnetic latitude, longitude, azimuth, and slant range of scatter point
             let (mut mag_loc, mut azimuth_mag, srng_mag) = rpos_inv_mag(
                 grid_beam.beam,
@@ -262,7 +262,8 @@ impl GridTable {
             let lon_spacing = (360.0 * grid_lat.abs().to_radians().cos() + 0.5).floor() / 360.0;
 
             // Calculate magnetic grid cell longitude
-            let grid_lon = ((mag_loc.lon.to_degrees() as f32 * lon_spacing).floor() + 0.5) / lon_spacing;
+            let grid_lon =
+                ((mag_loc.lon.to_degrees() as f32 * lon_spacing).floor() + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
             let reference: i32;
@@ -333,7 +334,8 @@ impl GridTable {
         let time = DateTime::from_timestamp_micros(time_micros).ok_or_else(|| {
             GridError::InvalidFitacf("Invalid datetime for GridTable".to_string())
         })?;
-        if self.status == 0 {  // set to zero by self.test()
+        if self.status == 0 {
+            // set to zero by self.test()
             self.status = 1;
             self.noise_mean = 0.0;
             self.noise_stddev = 0.0;
@@ -360,9 +362,15 @@ impl GridTable {
                     continue;
                 }
 
-                let velocity_error = scan_beam.cells[range].velocity_error.max(VELOCITY_ERROR_MIN);
-                let power_lin_error = scan_beam.cells[range].power_lin_error.max(POWER_LIN_ERROR_MIN);
-                let width_lin_error = scan_beam.cells[range].spectral_width_lin_error.max(WIDTH_LIN_ERROR_MIN);
+                let velocity_error = scan_beam.cells[range]
+                    .velocity_error
+                    .max(VELOCITY_ERROR_MIN);
+                let power_lin_error = scan_beam.cells[range]
+                    .power_lin_error
+                    .max(POWER_LIN_ERROR_MIN);
+                let width_lin_error = scan_beam.cells[range]
+                    .spectral_width_lin_error
+                    .max(WIDTH_LIN_ERROR_MIN);
 
                 // Get grid cell of radar beam/gate measurement
                 let grid_cell = &mut self.points[grid_beam.index[range] as usize];

@@ -8,7 +8,7 @@ pub struct GeocentricCoords {
     /// Longitude (radians)
     pub lon: f64,
     /// Distance from the center of the Earth (km)
-    pub rad: f64
+    pub rad: f64,
 }
 impl GeocentricCoords {
     pub fn new(lat: f64, lon: f64, rad: f64) -> GeocentricCoords {
@@ -29,15 +29,11 @@ impl GeocentricCoords {
 
         let gdlat = ((semi_major_axis * semi_major_axis) / (semi_minor_axis * semi_minor_axis)
             * self.lat.tan())
-            .atan();
+        .atan();
         let gdlon = self.lon;
 
         let rho = semi_major_axis
-            / (1.0
-            + second_eccentricity_squared
-            * self.lat.sin()
-            * self.lat.sin())
-            .sqrt();
+            / (1.0 + second_eccentricity_squared * self.lat.sin() * self.lat.sin()).sqrt();
 
         GeodeticCoords::new(gdlat, gdlon, rho)
     }
@@ -88,7 +84,12 @@ impl GeocentricCoords {
 }
 impl Display for GeocentricCoords {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_fmt(format_args!("({}, {}, {})", self.lat.to_degrees(), self.lon.to_degrees(), self.rad))
+        f.write_fmt(format_args!(
+            "({}, {}, {})",
+            self.lat.to_degrees(),
+            self.lon.to_degrees(),
+            self.rad
+        ))
     }
 }
 
@@ -99,7 +100,7 @@ pub struct GeodeticCoords {
     /// Longitude (degrees)
     pub lon: f64,
     /// Distance from the center of the Earth (km)
-    pub rad: f64
+    pub rad: f64,
 }
 
 impl GeodeticCoords {
@@ -121,13 +122,13 @@ impl GeodeticCoords {
 
         let gclat = ((semi_minor_axis * semi_minor_axis) / (semi_major_axis * semi_major_axis)
             * self.lat.tan())
-            .atan();
+        .atan();
         let mut gclon = self.lon;
         if gclon.to_degrees() > 180.0 {
             gclon -= 360.0_f64.to_radians();
         }
-        let rho =
-            semi_major_axis / (1.0 + second_eccentricity_squared * gclat.sin() * gclat.sin()).sqrt();
+        let rho = semi_major_axis
+            / (1.0 + second_eccentricity_squared * gclat.sin() * gclat.sin()).sqrt();
 
         GeocentricCoords::new(gclat, gclon, rho)
     }
@@ -157,7 +158,12 @@ impl GeodeticCoords {
 }
 impl Display for GeodeticCoords {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_fmt(format_args!("({}, {}, {})", self.lat.to_degrees(), self.lon.to_degrees(), self.rad))
+        f.write_fmt(format_args!(
+            "({}, {}, {})",
+            self.lat.to_degrees(),
+            self.lon.to_degrees(),
+            self.rad
+        ))
     }
 }
 
@@ -247,11 +253,10 @@ impl LocalAngularCoords {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use approx::assert_relative_eq;
     use super::*;
+    use approx::assert_relative_eq;
 
     #[test]
     fn test_geocentric_to_cartesian() {

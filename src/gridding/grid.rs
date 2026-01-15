@@ -391,12 +391,12 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     format!("{} {}", date_string, time_string).as_str(),
                     "%Y%m%d %H:%M",
                 )
-                    .map_err(|_| {
-                        ProcdarnError::Timestamp(
-                            "Unable to parse date and/or time from options or file".to_string(),
-                        )
-                    })?
-                    .and_utc();
+                .map_err(|_| {
+                    ProcdarnError::Timestamp(
+                        "Unable to parse date and/or time from options or file".to_string(),
+                    )
+                })?
+                .and_utc();
                 if args.verbose {
                     println!("start_time: {start_time}")
                 };
@@ -448,21 +448,22 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                                     })?
                                     .clone(),
                             )
-                                .map_err(|_| {
-                                    GridError::InvalidFitacf(format!(
-                                        "bad `scan` flag in {}",
-                                        infile.display()
-                                    ))
-                                })?;
+                            .map_err(|_| {
+                                GridError::InvalidFitacf(format!(
+                                    "bad `scan` flag in {}",
+                                    infile.display()
+                                ))
+                            })?;
                             scan_flags.push(scn_flg);
                         }
-                        record_idx =
-                            Some(scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
+                        record_idx = Some(
+                            scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
                                 GridError::InvalidFitacf(format!(
                                     "No records with set `scan` flag in {}",
                                     infile.display()
                                 ))
-                            })? + x);
+                            })? + x,
+                        );
                     } else {
                         return Err(GridError::BadArgs(
                             "No records match requested scan time".to_string(),
@@ -475,7 +476,9 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 if args.verbose {
                     println!("Gridding starting at record {first_idx}");
                 }
-                if let Ok((scan, recs_read)) = RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length) {
+                if let Ok((scan, recs_read)) =
+                    RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length)
+                {
                     found_scan = true;
                     current_scans[0] = scan;
                     record_idx = Some(record_idx.unwrap() + recs_read);
@@ -488,7 +491,13 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         if found_record {
             if let Some(x) = &args.interval {
                 let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
-                let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
+                let dur = dt
+                    - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| {
+                        GridError::BadArgs(
+                            "This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)"
+                                .to_string(),
+                        )
+                    })?;
                 end_time = Some(start_time + dur);
             } else {
                 end_time = match &args.end_time {
@@ -502,15 +511,15 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                             format!("{} {}", date_string, time_string).as_str(),
                             "%Y%m%d %H:%M",
                         )
-                            .map_err(|_| {
-                                GridError::BadArgs(
-                                    "Unable to parse end date and/or time from options".to_string(),
-                                )
-                            })?
-                            .and_utc()
-                            .into()
+                        .map_err(|_| {
+                            GridError::BadArgs(
+                                "Unable to parse end date and/or time from options".to_string(),
+                            )
+                        })?
+                        .and_utc()
+                        .into()
                     }
-                    None => None
+                    None => None,
                 };
             }
             if num_averages != 1 && end_time.is_some() {
@@ -625,7 +634,12 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     // If GridTable good and grid record starts at or after start_time, write to file
                     if grid_table.start_time >= start_time {
                         if !args.verbose {
-                            println!("Storing: {} {} pnts={}", grid_table.start_time.format("%Y-%m-%d %H:%M:%S"), grid_table.end_time.format("%H:%M:%S"), grid_table.num_points_npnt);
+                            println!(
+                                "Storing: {} {} pnts={}",
+                                grid_table.start_time.format("%Y-%m-%d %H:%M:%S"),
+                                grid_table.end_time.format("%H:%M:%S"),
+                                grid_table.num_points_npnt
+                            );
                         }
                         records_for_file.push(grid_table.to_dmap_record(args.extended_mode_flag)?);
                     }

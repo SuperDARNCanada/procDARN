@@ -1,3 +1,4 @@
+use approx::RelativeEq;
 use assert_unordered::assert_eq_unordered;
 use dmap::formats::grid::GridRecord;
 use dmap::record::Record;
@@ -6,11 +7,13 @@ use itertools::enumerate;
 use procdarn::gridding::grid::{fit2grid, GridArgs};
 use std::iter::zip;
 use std::path::PathBuf;
-use approx::RelativeEq;
 
 fn compare_grid_recs(left_recs: Vec<GridRecord>, right_recs: Vec<GridRecord>) {
     let variable_fields = vec!["origin.time", "origin.command"];
-    println!("left_recs: {:?}\nright_recs: {:?}", left_recs[0], right_recs[0]);
+    println!(
+        "left_recs: {:?}\nright_recs: {:?}",
+        left_recs[0], right_recs[0]
+    );
     assert_eq!(left_recs.len(), right_recs.len());
     for (i, (test_rec, rst_rec)) in enumerate(zip(left_recs.iter(), right_recs.iter())) {
         assert_eq_unordered!(test_rec.keys(), rst_rec.keys());
