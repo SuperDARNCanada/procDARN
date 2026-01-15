@@ -6,7 +6,7 @@ use crate::utils::hdw::{HdwError, HdwInfo};
 use crate::utils::scan::RadarScan;
 use crate::utils::search::fit_seek;
 use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Utc};
-use clap::Parser;
+use clap::{arg, Parser};
 use dmap::error::DmapError;
 use dmap::formats::grid::GridRecord;
 use pyo3::exceptions::PyValueError;
@@ -338,10 +338,9 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         current_scans.push(RadarScan::default());
     }
     let mut found_record = false;
-    let mut end_time_set = false;
     let mut index = 0;
     let mut num_scans = 0;
-    let mut record_idx: Option<usize> = None;
+    let mut record_idx: Option<usize>;
     let mut end_time: Option<DateTime<Utc>> = None;
     let hdw_info: Option<HdwInfo> = None;
     let mut records_for_file: Vec<GridRecord> = vec![];
@@ -355,9 +354,10 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
 
         // Get the first scan from the file
         match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
-            Ok((x, _)) => {
+            Ok((x, num_read)) => {
                 current_scans[index] = x;
                 found_scan = true;
+                record_idx = Some(num_read);
             }
             Err(e) => {
                 if args.verbose {
@@ -391,12 +391,12 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     format!("{} {}", date_string, time_string).as_str(),
                     "%Y%m%d %H:%M",
                 )
-                .map_err(|_| {
-                    ProcdarnError::Timestamp(
-                        "Unable to parse date and/or time from options or file".to_string(),
-                    )
-                })?
-                .and_utc();
+                    .map_err(|_| {
+                        ProcdarnError::Timestamp(
+                            "Unable to parse date and/or time from options or file".to_string(),
+                        )
+                    })?
+                    .and_utc();
                 if args.verbose {
                     println!("start_time: {start_time}")
                 };
@@ -448,12 +448,12 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                                     })?
                                     .clone(),
                             )
-                            .map_err(|_| {
-                                GridError::InvalidFitacf(format!(
-                                    "bad `scan` flag in {}",
-                                    infile.display()
-                                ))
-                            })?;
+                                .map_err(|_| {
+                                    GridError::InvalidFitacf(format!(
+                                        "bad `scan` flag in {}",
+                                        infile.display()
+                                    ))
+                                })?;
                             scan_flags.push(scn_flg);
                         }
                         record_idx =
@@ -485,7 +485,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
             }
         }
 
-        if found_record && !end_time_set {
+        if found_record {
             if let Some(x) = &args.interval {
                 let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
                 let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
@@ -513,18 +513,16 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     None => None
                 };
             }
-            if num_averages == 1 && end_time.is_some() {
-                if let Some(x) = &args.interval {
-                    let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
-                    let dur = dt - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| GridError::BadArgs("This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)".to_string()))?;
-                    end_time = Some(end_time.unwrap() - dur);
+            if num_averages != 1 && end_time.is_some() {
+                if args.record_interval != 0 {
+                    let dt = TimeDelta::seconds(args.record_interval as i64);
+                    end_time = Some(end_time.unwrap() + dt);
                 } else {
                     let td = current_scans[0].end_time - current_scans[0].start_time
                         + TimeDelta::seconds(15);
                     end_time = Some(end_time.unwrap() + td);
                 }
             }
-            end_time_set = true;
         }
 
         let year = start_time.year() as c_int;
@@ -619,13 +617,16 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 // If not already done, load HdwInfo for radar
                 let hdw_params = match hdw_info {
                     Some(ref x) => x,
-                    None => &HdwInfo::new(grid_record.station_id as i16, start_time)?,
+                    None => &HdwInfo::new(grid_record.station_id, start_time)?,
                 };
 
                 // Test whether the grid table should be written to file
                 if grid_table.test(&grid_record) {
                     // If GridTable good and grid record starts at or after start_time, write to file
                     if grid_table.start_time >= start_time {
+                        if !args.verbose {
+                            println!("Storing: {} {} pnts={}", grid_table.start_time.format("%Y-%m-%d %H:%M:%S"), grid_table.end_time.format("%H:%M:%S"), grid_table.num_points_npnt);
+                        }
                         records_for_file.push(grid_table.to_dmap_record(args.extended_mode_flag)?);
                     }
                 }
@@ -665,6 +666,7 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 Err(e) => Err(e)?,
             };
 
+            // println!("get_first_scan: {record_idx:?}\t{} to {}", current_scans[index].start_time.format("%H:%M:%S"), current_scans[index].end_time.format("%H:%M:%S"));
             // If scan starts after end_time, this file is done being gridded
             if let Some(dt) = end_time {
                 if current_scans[index].start_time > dt {
@@ -675,7 +677,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         }
     }
 
-    println!("Done gridding, {} records", records_for_file.len());
     // Write to file
     Ok(records_for_file)
 }

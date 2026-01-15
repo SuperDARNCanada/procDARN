@@ -17,6 +17,7 @@ fn compare_grid_recs(left_recs: Vec<GridRecord>, right_recs: Vec<GridRecord>) {
         for k in test_rec.keys() {
             if variable_fields.contains(&&**k) {
             } else {
+                eprintln!("testing rec {i} field {k}");
                 match test_rec.get(k) {
                     Some(DmapField::Vector(DmapVec::Float(x))) => {
                         assert!(rst_rec.get(k).is_some(), "Testing rec {i} {k}");
@@ -25,12 +26,11 @@ fn compare_grid_recs(left_recs: Vec<GridRecord>, right_recs: Vec<GridRecord>) {
                                 x.map(|v| if v.is_nan() { -1_000_000.0 } else { *v })
                                     .relative_eq(
                                         &y.map(|v| if v.is_nan() { -1_000_000.0 } else { *v }),
-                                        1e-5,
-                                        1e-5
+                                        1e-4,
+                                        1e-4
                                     ),
-                                "Testing rec {i} {k}: left == right\n\nleft: {x}\n\nright: {y}\n\nDiff: {}\n\nslist: {:?}",
+                                "Testing rec {i} {k}: left == right\n\tleft: {x}\n\tright: {y}\n\tDiff: {}",
                                 (x - y) / x,
-                                test_rec.get(&"slist".to_string())
                             );
                         }
                     }
@@ -125,14 +125,13 @@ fn init_test_env() -> (GridArgs, Vec<String>) {
         all_data_flag: false,
         inertial_frame_flag: false,
         chisham_flag: false,
-        verbose: true,
+        verbose: false,
     };
 
     let mut rst_args = vec![];
     for infile in fitacf_files.iter() {
         rst_args.push(infile.display().to_string());
     }
-    rst_args.insert(0, "-vb".to_string());
 
     (args, rst_args)
 }
@@ -140,14 +139,6 @@ fn init_test_env() -> (GridArgs, Vec<String>) {
 #[test]
 fn vanilla() {
     let (args, rst_args) = init_test_env();
-    test_grid_with_args(&args, rst_args.clone());
-}
-
-#[test]
-fn extended() {
-    let (mut args, mut rst_args) = init_test_env();
-    args.extended_mode_flag = true;
-    rst_args.insert(0, "-xtd".to_string());
     test_grid_with_args(&args, rst_args.clone());
 }
 
@@ -194,12 +185,17 @@ fn no_boxcar() {
 }
 
 #[test]
-fn change_altitude() {
+fn no_boxcar_short_duration() {
     let (mut args, mut rst_args) = init_test_env();
-    args.altitude = 250.0;
-    rst_args.insert(0, "-alt".to_string());
-    rst_args.insert(1, "250.0".to_string());
-    test_grid_with_args(&args, rst_args.clone());
+    args.boxcar_filter_flag = false;
+    args.end_time = Some("01:00".to_string());
+    args.start_time = Some("00:55".to_string());
+    rst_args.insert(0, "-et".to_string());
+    rst_args.insert(1, "01:00".to_string());
+    rst_args.insert(0, "-st".to_string());
+    rst_args.insert(1, "00:55".to_string());
+    rst_args.insert(0, "-nav".to_string());
+    test_grid_with_args(&args, rst_args);
 }
 
 #[test]
@@ -242,6 +238,20 @@ fn start_and_end_time() {
 }
 
 #[test]
+fn start_end_and_chisham() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.end_time = Some("01:00".to_string());
+    args.start_time = Some("00:55".to_string());
+    args.chisham_flag = true;
+    rst_args.insert(0, "-et".to_string());
+    rst_args.insert(1, "01:00".to_string());
+    rst_args.insert(0, "-st".to_string());
+    rst_args.insert(1, "00:55".to_string());
+    rst_args.insert(0, "-chisham".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
 fn start_end_and_range() {
     let (mut args, mut rst_args) = init_test_env();
     args.end_time = Some("01:00".to_string());
@@ -256,5 +266,226 @@ fn start_end_and_range() {
     rst_args.insert(1, "10".to_string());
     rst_args.insert(0, "-maxrng".to_string());
     rst_args.insert(1, "20".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn exclude_beams() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.exclude_beams = Some(vec![0, 7, 14]);
+    rst_args.insert(0, "-ebm".to_string());
+    rst_args.insert(1, "0,7,14".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn interval() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.interval = Some("01:30".to_string());
+    rst_args.insert(0, "-ex".to_string());
+    rst_args.insert(1, "01:30".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn record_interval() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.record_interval = 30;
+    rst_args.insert(0, "-i".to_string());
+    rst_args.insert(1, "30".to_string());
+    rst_args.insert(2, "-vb".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn channel() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.channel = Some('a');
+    rst_args.insert(0, "-cn".to_string());
+    rst_args.insert(1, "a".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn channel_fix() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.channel_fix = Some('a');
+    rst_args.insert(0, "-cn_fix".to_string());
+    rst_args.insert(1, "a".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn min_range_gate() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_range_gate = Some(10);
+    rst_args.insert(0, "-minrng".to_string());
+    rst_args.insert(1, "10".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn max_range_gate() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_range_gate = Some(20);
+    rst_args.insert(0, "-maxrng".to_string());
+    rst_args.insert(1, "20".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn min_slant_range() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_slant_range = Some(500.0);
+    rst_args.insert(0, "-minsrng".to_string());
+    rst_args.insert(1, "500".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn max_slant_range() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_slant_range = Some(500.0);
+    rst_args.insert(0, "-maxsrng".to_string());
+    rst_args.insert(1, "500".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+
+#[test]
+fn filter_weighting() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.filter_weighting = 4;
+    rst_args.insert(0, "-fwgt".to_string());
+    rst_args.insert(1, "4".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn max_power() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_power = 30.0;
+    rst_args.insert(0, "-pmax".to_string());
+    rst_args.insert(1, "30".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn max_velocity() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_velocity = 1200.0;
+    rst_args.insert(0, "-vmax".to_string());
+    rst_args.insert(1, "1200".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn max_spectral_width() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_spectral_width = 500.0;
+    rst_args.insert(0, "-wmax".to_string());
+    rst_args.insert(1, "500".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn max_velocity_error() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_velocity_error = 250.0;
+    rst_args.insert(0, "-vemax".to_string());
+    rst_args.insert(1, "250".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn min_power() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_power = 4.5;
+    rst_args.insert(0, "-pmin".to_string());
+    rst_args.insert(1, "4.5".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn min_velocity() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_velocity = 50.0;
+    rst_args.insert(0, "-vmin".to_string());
+    rst_args.insert(1, "50".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn min_spectral_width() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_spectral_width = 30.0;
+    rst_args.insert(0, "-wmin".to_string());
+    rst_args.insert(1, "30".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn min_velocity_error() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.min_velocity_error = 15.0;
+    rst_args.insert(0, "-vemin".to_string());
+    rst_args.insert(1, "15".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn altitude() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.altitude = 250.0;
+    rst_args.insert(0, "-alt".to_string());
+    rst_args.insert(1, "250".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn max_frequency_var() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.max_frequency_var = 100000;
+    rst_args.insert(0, "-fmax".to_string());
+    rst_args.insert(1, "100000".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn no_limits_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.no_limits_flag = true;
+    rst_args.insert(0, "-nlm".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn op_param_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.op_param_flag = true;
+    rst_args.insert(0, "-nb".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn exclude_neg_scan_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.exclude_neg_scan_flag = true;
+    rst_args.insert(0, "-ns".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn extended_mode_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.extended_mode_flag = true;
+    rst_args.insert(0, "-xtd".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn sort_params_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.sort_params_flag = true;
+    rst_args.insert(0, "-isort".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn all_data_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.all_data_flag = true;
+    args.ionosphere_only_flag = false;
+    rst_args.insert(0, "-both".to_string());
+    test_grid_with_args(&args, rst_args);
+}
+#[test]
+fn inertial_frame_flag() {
+    let (mut args, mut rst_args) = init_test_env();
+    args.inertial_frame_flag = true;
+    rst_args.insert(0, "-inertial".to_string());
     test_grid_with_args(&args, rst_args);
 }

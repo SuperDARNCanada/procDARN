@@ -216,11 +216,11 @@ impl RadarScan {
                 )
                 .map_err(|_| ProcdarnError::WrongType("tfreq"))?,
                 noise: i32::try_from(
-                    rec.get(&"noise.search".to_string())
-                        .ok_or(ProcdarnError::MissingField("noise.search"))?
+                    rec.get(&"noise.sky".to_string())
+                        .ok_or(ProcdarnError::MissingField("noise.sky"))?
                         .clone(),
                 )
-                .map_err(|_| ProcdarnError::WrongType("noise.search"))?,
+                .map_err(|_| ProcdarnError::WrongType("noise.sky"))?,
                 attenuation: i32::try_from(
                     rec.get(&"atten".to_string())
                         .ok_or(ProcdarnError::MissingField("atten"))?
@@ -383,10 +383,10 @@ impl RadarScan {
                     let range_slant = slant_range(
                         beam.first_range,
                         beam.range_sep,
-                        beam.rx_rise,
-                        range_edge,
-                        rg,
-                    );
+                        beam.rx_rise as f64,
+                        range_edge as f64,
+                        rg + 1,
+                    ) as f32;
                     match (min_slant_range, max_slant_range) {
                         (Some(min), Some(max)) => {
                             if min > range_slant || range_slant > max {

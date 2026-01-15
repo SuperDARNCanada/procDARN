@@ -5,3 +5,4 @@ pub mod rpos;
 pub mod scan;
 pub mod search;
 pub mod sugar;
+mod coords;

@@ -86,13 +86,7 @@ pub fn median_filter(
     let mut max_beam: i32 = -1;
     let mut max_range: usize = 1000;
     let threshold = &[12, 24];
-    let filter_depth = {
-        if depth as usize > FILTER_DEPTH {
-            FILTER_DEPTH
-        } else {
-            depth as usize
-        }
-    };
+    let filter_depth = (depth as usize).min(FILTER_DEPTH);
 
     // Find the largest beam number and range number in all the scans
     for i in 0..filter_depth {
@@ -100,7 +94,7 @@ pub fn median_filter(
             if beam.beam >= max_beam {
                 max_beam = beam.beam + 1; // Add one since beam number is indexed from 0
             }
-            if beam.num_ranges as usize > max_range {
+            if max_range > beam.num_ranges as usize {
                 max_range = beam.num_ranges as usize;
             }
         }
@@ -189,8 +183,8 @@ pub fn median_filter(
     out_scan.start_time = scans[i].start_time;
     out_scan.end_time = scans[i].end_time;
 
-    // If mode is a multiple of
-    if mode % 4 == 0 {
+    // bitmap of (mode & 0x04) is nonzero
+    if (mode / 4) % 2 == 1 {
         for beam_num in 0..max_beam as usize {
             // If center scan doesn't have beams then skip this beam
             if beam_pointers[beam_num][depth as usize / 2].len() == 0 {
@@ -335,13 +329,15 @@ pub fn median_filter(
 
     for beam_num in 0..max_beam as usize {
         for range in 0..max_range {
+            kernel.clear();
+
             // Set up the spatial 3x3 (beam by range) filtering boundaries
             // saturating_sub will stop underflow for these usize types, limiting the result to 0
+            let bbox = (beam_num as i32) - (FILTER_WIDTH as i32 / 2);
             let bmin = beam_num.saturating_sub(FILTER_WIDTH / 2);
-            let bbox = beam_num.saturating_sub(FILTER_WIDTH / 2);
             let mut bmax = beam_num + FILTER_WIDTH / 2;
-            let rmin = range.saturating_sub(FILTER_HEIGHT / 2);
-            let rbox = range.saturating_sub(FILTER_HEIGHT / 2);
+            let rbox = (range as i32) - (FILTER_HEIGHT as i32 / 2);
+            let rmin = range.saturating_sub(FILTER_WIDTH / 2);
             let mut rmax = range + FILTER_HEIGHT / 2;
 
             // Set upper beam boundary to the highest beam when at other edge of FOV
@@ -357,9 +353,9 @@ pub fn median_filter(
             let mut weight = 0;
 
             // Loop over beams
-            for x in bmin..bmax {
+            for x in bmin..bmax+1 {
                 // Loop over ranges
-                for y in rmin..rmax {
+                for y in rmin..rmax+1 {
                     // Loop over time
                     for z in 0..depth as usize {
                         // Loop over beams in time/beam combo
@@ -369,10 +365,13 @@ pub fn median_filter(
                                 continue;
                             }
 
+                            let bm_idx = (x as i32 - bbox) as usize;
+                            let rg_idx = (y as i32 - rbox) as usize;
+
                             // Check that there is scatter present in the beam/range/time cell
                             if beam.scatter[y] != 0 {
                                 // Increment weight
-                                weight += weights[x - bbox][y - rbox][z];
+                                weight += weights[bm_idx][rg_idx][z];
                                 // Add this observation to the kernel
                                 kernel.push(&beam.cells[y]);
                             }
@@ -388,13 +387,14 @@ pub fn median_filter(
             // If the current beam is at the edge of the FOV then increase its weight by 50%
             // TODO: What about near/far range edges?
             // TODO: weight is an integer, this is kinda hacky
-            if beam_num == 0 || beam_num == (max_beam - 1).try_into().unwrap() {
-                weight = weight + (weight / 2);
+            if beam_num == 0 || beam_num == usize::try_from(max_beam - 1).unwrap() {
+                weight += weight / 2;
             }
 
             // If the sum of weights of cells with scatter in the kernel is less than the threshold
             // then continue
             if weight <= threshold[mode as usize % 2] {
+                // println!("skipping beam {beam_num} range {range}, weight={weight}");
                 continue;
             }
 
@@ -412,13 +412,13 @@ pub fn median_filter(
             // TODO: Figure out how to properly check param (RST does bitwise checks)
             // Perform velocity median filtering if specified
             let mut compare_fn: fn(&RadarCell) -> f32 = |x| x.velocity;
-            if param % 2 == 1 {
+            if param % 2 == 1 {  // i.e. bitmap of (param & 0x01) is nonzero
                 (out_cell.velocity, out_cell.velocity_error) =
                     calculate_median_sigma(&mut kernel, |x| x.velocity, compare_fn);
             }
 
             // Perform lambda power median filtering if specified
-            if param % 2 == 0 {
+            if (param / 2) % 2 == 1 {  // i.e. bitmap of (param & 0x02) is nonzero
                 if isort == true {
                     compare_fn = |x| x.power_lin;
                 }
@@ -427,7 +427,7 @@ pub fn median_filter(
             }
 
             // Perform spectral width median filtering if specified
-            if param % 4 == 0 {
+            if (param / 4) % 2 == 1 {  // i.e. bitmap of (param & 0x04) is nonzero
                 if isort == true {
                     compare_fn = |x| x.spectral_width_lin;
                 }
@@ -438,7 +438,7 @@ pub fn median_filter(
             }
 
             // Perform lag0 power median filtering if specified
-            if param % 8 == 0 {
+            if (param / 8) % 2 == 1 {  // i.e. bitmap of (param & 0x08) is nonzero
                 if isort == true {
                     compare_fn = |x| x.power_lag_zero;
                 }

@@ -48,6 +48,7 @@ pub(crate) fn mark_bad_samples(rec: &Rawacf) -> Vec<i32> {
 
         // Blank all samples within the pulse duration
         while (ts >= t1) && (ts <= t2) {
+            println!("blanking sample {sample} for pulse {pulse_us}");
             bad_samples.push(sample);
             sample += 1;
             ts += i32::from(rec.smsep);
@@ -63,12 +64,13 @@ pub(crate) fn filter_tx_overlapped_lags(
     ranges: &mut Vec<RangeNode>,
 ) {
     let bad_samples = mark_bad_samples(rec);
-    for range_node in ranges {
+    for (j, range_node) in ranges.iter_mut().enumerate() {
         let mut bad_indices = vec![];
         for (idx, lag) in lags.iter().enumerate() {
             let sample_1 = lag.sample_base_1 + range_node.range_num as i32;
             let sample_2 = lag.sample_base_2 + range_node.range_num as i32;
             if bad_samples.contains(&sample_1) || bad_samples.contains(&sample_2) {
+                println!("Range {j}: removing lag {idx} (samples {sample_1} and {sample_2})");
                 bad_indices.push(idx);
             }
         }

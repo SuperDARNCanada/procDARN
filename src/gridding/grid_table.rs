@@ -27,7 +27,7 @@ pub struct GridBeam {
     pub range_sep: i32,        // rsep in RST, km
     pub rx_rise: i32,          // rxrise in RST, microseconds?
     pub num_ranges: i32,       // nrang in RST
-    pub azimuth: Vec<f32>,     // azm in RST, degrees?
+    pub azimuth: Vec<f32>,     // azm in RST, radians
     pub slant_range: Vec<f32>, // srng in RST, km
     pub ival: Vec<f32>,        // ival in RST
     pub index: Vec<i32>,       // inx in RST
@@ -40,7 +40,7 @@ pub struct GridPoint {
     pub reference: i32,             // ref in RST
     pub magnetic_lat: f32,          // mlat in RST
     pub magnetic_lon: f32,          // mlon in RST
-    pub azimuth: f32,               // azm in RST, degrees?
+    pub azimuth: f32,               // azm in RST, degrees
     pub slant_range: f32,           // srng in RST, km
     pub velocity_median: f32,       // vel.median in RST, m/s
     pub velocity_median_north: f32, // vel.median_n in RST, m/s
@@ -215,7 +215,7 @@ impl GridTable {
 
         for range in 0..grid_beam.num_ranges {
             // Calculate geographic azimuth and elevation to scatter point
-            let (azimuth_geo, _, _) = rpos_range_beam_azimuth_elevation(
+            let result = rpos_range_beam_azimuth_elevation(
                 grid_beam.beam,
                 range,
                 time.year(),
@@ -226,6 +226,8 @@ impl GridTable {
                 altitude,
                 chisham,
             )?;
+            let azimuth_geo = result.az;
+            
             // Calculate magnetic latitude, longitude, azimuth, and slant range of scatter point
             let (mut mag_loc, mut azimuth_mag, srng_mag) = rpos_inv_mag(
                 grid_beam.beam,
@@ -244,33 +246,33 @@ impl GridTable {
             if azimuth_mag < 0.0 {
                 azimuth_mag += 2.0 * PI;
             }
-            if mag_loc[0] < 0.0 {
-                mag_loc[0] += 2.0 * PI as f64;
+            if mag_loc.lon < 0.0 {
+                mag_loc.lon += 2.0 * PI as f64;
             }
 
             // Calculate magnetic grid cell latitude, (e.g. 72.1->72.5, 57.8->57.5, etc)
             let grid_lat: f32;
-            if mag_loc[1] > 0.0 {
-                grid_lat = mag_loc[1].to_degrees().floor() as f32 + 0.5;
+            if mag_loc.lat > 0.0 {
+                grid_lat = mag_loc.lat.to_degrees().floor() as f32 + 0.5;
             } else {
-                grid_lat = mag_loc[1].to_degrees().floor() as f32 - 0.5;
+                grid_lat = mag_loc.lat.to_degrees().floor() as f32 - 0.5;
             }
 
             // Calculate magnetic grid longitude spacing at grid latitude
             let lon_spacing = (360.0 * grid_lat.abs().to_radians().cos() + 0.5).floor() / 360.0;
 
             // Calculate magnetic grid cell longitude
-            let grid_lon = (mag_loc[0].to_degrees() as f32 * lon_spacing + 0.5) / lon_spacing;
+            let grid_lon = ((mag_loc.lon.to_degrees() as f32 * lon_spacing).floor() + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
             let reference: i32;
-            if mag_loc[1] > 0.0 {
-                reference = (1000.0 * mag_loc[1].to_degrees().floor() as f32
-                    + (mag_loc[0].to_degrees() as f32 * lon_spacing).floor())
+            if mag_loc.lat > 0.0 {
+                reference = (1000.0 * mag_loc.lat.to_degrees().floor() as f32
+                    + (mag_loc.lon.to_degrees() as f32 * lon_spacing).floor())
                     as i32;
             } else {
-                reference = (-1000.0 * (-1.0 * mag_loc[1].to_degrees()).floor() as f32
-                    - (mag_loc[0].to_degrees() as f32 * lon_spacing).floor())
+                reference = (-1000.0 * (-1.0 * mag_loc.lat.to_degrees()).floor() as f32
+                    - (mag_loc.lon.to_degrees() as f32 * lon_spacing).floor())
                     as i32;
             }
 
@@ -283,7 +285,7 @@ impl GridTable {
 
             // Update the total number of range gates that map to GridPoint (GridPoint.max)
             point.reference = reference;
-            point.count += 1;
+            point.max += 1;
 
             // Set magnetic lat/lon for GridPoint
             point.magnetic_lat = grid_lat;
@@ -295,7 +297,7 @@ impl GridTable {
             grid_beam.slant_range.push(srng_mag);
             grid_beam
                 .ival
-                .push(velocity_correction * (azimuth_geo + 90.0).to_radians().cos());
+                .push(velocity_correction * (-azimuth_geo.sin() as f32));
         }
         self.beams.push(grid_beam);
         // Return index of beam number added to self
@@ -331,12 +333,13 @@ impl GridTable {
         let time = DateTime::from_timestamp_micros(time_micros).ok_or_else(|| {
             GridError::InvalidFitacf("Invalid datetime for GridTable".to_string())
         })?;
-        if self.status == 0 {
+        if self.status == 0 {  // set to zero by self.test()
             self.status = 1;
             self.noise_mean = 0.0;
             self.noise_stddev = 0.0;
             self.freq = 0.0;
             self.num_scans = 0;
+            self.clear();
             self.start_time = scan.start_time.clone();
             self.end_time = scan.start_time.clone() + TimeDelta::seconds(tlen as i64);
             self.station_id = scan.station_id.clone();
@@ -357,25 +360,12 @@ impl GridTable {
                     continue;
                 }
 
-                let mut velocity_error = scan_beam.cells[range].velocity_error;
-                let mut power_lin_error = scan_beam.cells[range].power_lin_error;
-                let mut width_lin_error = scan_beam.cells[range].spectral_width_lin_error;
-
-                if velocity_error < VELOCITY_ERROR_MIN {
-                    velocity_error = VELOCITY_ERROR_MIN;
-                }
-                if power_lin_error < POWER_LIN_ERROR_MIN {
-                    power_lin_error = POWER_LIN_ERROR_MIN;
-                }
-                if width_lin_error < WIDTH_LIN_ERROR_MIN {
-                    width_lin_error = WIDTH_LIN_ERROR_MIN;
-                }
+                let velocity_error = scan_beam.cells[range].velocity_error.max(VELOCITY_ERROR_MIN);
+                let power_lin_error = scan_beam.cells[range].power_lin_error.max(POWER_LIN_ERROR_MIN);
+                let width_lin_error = scan_beam.cells[range].spectral_width_lin_error.max(WIDTH_LIN_ERROR_MIN);
 
                 // Get grid cell of radar beam/gate measurement
                 let grid_cell = &mut self.points[grid_beam.index[range] as usize];
-
-                // Add magnetic azimuth of radar beam/gate measurement
-                grid_cell.azimuth += grid_beam.azimuth[range];
 
                 // Add slant range of gate measurement
                 grid_cell.slant_range += grid_beam.slant_range[range];
@@ -383,18 +373,18 @@ impl GridTable {
                 if iflg {
                     grid_cell.velocity_median_north -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
-                        * grid_beam.azimuth[range].to_radians().cos()
+                        * grid_beam.azimuth[range].cos()
                         / (velocity_error * velocity_error);
                     grid_cell.velocity_median_east -= (scan_beam.cells[range].velocity
                         + grid_beam.ival[range])
-                        * grid_beam.azimuth[range].to_radians().sin()
+                        * grid_beam.azimuth[range].sin()
                         / (velocity_error * velocity_error);
                 } else {
                     grid_cell.velocity_median_north -= scan_beam.cells[range].velocity
-                        * grid_beam.azimuth[range].to_radians().cos()
+                        * grid_beam.azimuth[range].cos()
                         / (velocity_error * velocity_error);
                     grid_cell.velocity_median_east -= scan_beam.cells[range].velocity
-                        * grid_beam.azimuth[range].to_radians().sin()
+                        * grid_beam.azimuth[range].sin()
                         / (velocity_error * velocity_error);
                 }
 
@@ -403,9 +393,9 @@ impl GridTable {
                 grid_cell.spectral_width_median +=
                     scan_beam.cells[range].spectral_width_lin / (width_lin_error * width_lin_error);
 
-                grid_cell.velocity_stddev /= velocity_error * velocity_error;
-                grid_cell.power_stddev /= power_lin_error * power_lin_error;
-                grid_cell.spectral_width_stddev /= width_lin_error * width_lin_error;
+                grid_cell.velocity_stddev += 1.0 / (velocity_error * velocity_error);
+                grid_cell.power_stddev += 1.0 / (power_lin_error * power_lin_error);
+                grid_cell.spectral_width_stddev += 1.0 / (width_lin_error * width_lin_error);
                 grid_cell.count += 1;
             }
         }
@@ -451,7 +441,7 @@ impl GridTable {
         let num_points = valid_points.len();
 
         // These vector fields require accessing the points of grid_table
-        let magnetic_lat = valid_points.iter().map(|&p| p.magnetic_lat).collect();
+        let magnetic_lat: Vec<f32> = valid_points.iter().map(|&p| p.magnetic_lat).collect();
         let magnetic_lon = valid_points.iter().map(|&p| p.magnetic_lon).collect();
         let azimuth = valid_points.iter().map(|&p| p.azimuth).collect();
         let slant_range = valid_points.iter().map(|&p| p.slant_range).collect();
@@ -471,7 +461,7 @@ impl GridTable {
         let station_ids: Vec<i16> = iter::repeat(self.station_id)
             .take(valid_points.len())
             .collect();
-        let channels: Vec<i16> = iter::repeat(self.channel as i16)
+        let channels: Vec<i16> = iter::repeat(self.channel)
             .take(valid_points.len())
             .collect();
 
@@ -565,7 +555,7 @@ impl GridTable {
         );
         grid_rec.insert(
             "p.max".to_string(),
-            array![self.min_power].into_dyn().into(),
+            array![self.max_power].into_dyn().into(),
         );
         grid_rec.insert(
             "w.min".to_string(),
@@ -583,61 +573,62 @@ impl GridTable {
             "ve.max".to_string(),
             array![self.max_velocity_error].into_dyn().into(),
         );
-        grid_rec.insert(
-            "vector.mlat".to_string(),
-            Array::from_vec(magnetic_lat).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.mlon".to_string(),
-            Array::from_vec(magnetic_lon).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.kvect".to_string(),
-            Array::from_vec(azimuth).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.srng".to_string(),
-            Array::from_vec(slant_range).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.stid".to_string(),
-            Array::from_vec(station_ids).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.channel".to_string(),
-            Array::from_vec(channels).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.index".to_string(),
-            Array::from_vec(index).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.vel.median".to_string(),
-            Array::from_vec(velocity_median).into_dyn().into(),
-        );
-        grid_rec.insert(
-            "vector.vel.sd".to_string(),
-            Array::from_vec(velocity_stddev).into_dyn().into(),
-        );
-        if extended_flag {
+        if !magnetic_lat.is_empty() {
             grid_rec.insert(
-                "vector.pwr.median".to_string(),
-                Array::from_vec(power_median).into_dyn().into(),
+                "vector.mlat".to_string(),
+                Array::from_vec(magnetic_lat).into_dyn().into(),
             );
             grid_rec.insert(
-                "vector.pwr.sd".to_string(),
-                Array::from_vec(power_stddev).into_dyn().into(),
+                "vector.mlon".to_string(),
+                Array::from_vec(magnetic_lon).into_dyn().into(),
             );
             grid_rec.insert(
-                "vector.wdt.median".to_string(),
-                Array::from_vec(spectral_width_median).into_dyn().into(),
+                "vector.kvect".to_string(),
+                Array::from_vec(azimuth).into_dyn().into(),
             );
             grid_rec.insert(
-                "vector.wdt.sd".to_string(),
-                Array::from_vec(spectral_width_stddev).into_dyn().into(),
+                "vector.srng".to_string(),
+                Array::from_vec(slant_range).into_dyn().into(),
             );
+            grid_rec.insert(
+                "vector.stid".to_string(),
+                Array::from_vec(station_ids).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.channel".to_string(),
+                Array::from_vec(channels).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.index".to_string(),
+                Array::from_vec(index).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.vel.median".to_string(),
+                Array::from_vec(velocity_median).into_dyn().into(),
+            );
+            grid_rec.insert(
+                "vector.vel.sd".to_string(),
+                Array::from_vec(velocity_stddev).into_dyn().into(),
+            );
+            if extended_flag {
+                grid_rec.insert(
+                    "vector.pwr.median".to_string(),
+                    Array::from_vec(power_median).into_dyn().into(),
+                );
+                grid_rec.insert(
+                    "vector.pwr.sd".to_string(),
+                    Array::from_vec(power_stddev).into_dyn().into(),
+                );
+                grid_rec.insert(
+                    "vector.wdt.median".to_string(),
+                    Array::from_vec(spectral_width_median).into_dyn().into(),
+                );
+                grid_rec.insert(
+                    "vector.wdt.sd".to_string(),
+                    Array::from_vec(spectral_width_stddev).into_dyn().into(),
+                );
+            }
         }
-
         GridRecord::new(&mut grid_rec).map_err(|e| e.into())
     }
 }

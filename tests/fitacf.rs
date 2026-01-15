@@ -1,5 +1,4 @@
 use assert_unordered::assert_eq_unordered;
-use dmap::record::Record;
 use dmap::types::{DmapField, DmapVec};
 use itertools::enumerate;
 use procdarn::fitting::fitacf3::fitacf_v3::fitacf3;
