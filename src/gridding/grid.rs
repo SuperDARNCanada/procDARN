@@ -680,7 +680,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                 Err(e) => Err(e)?,
             };
 
-            // println!("get_first_scan: {record_idx:?}\t{} to {}", current_scans[index].start_time.format("%H:%M:%S"), current_scans[index].end_time.format("%H:%M:%S"));
             // If scan starts after end_time, this file is done being gridded
             if let Some(dt) = end_time {
                 if current_scans[index].start_time > dt {

@@ -31,9 +31,11 @@ fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f32) -> (f32, 
 
 /// Calculates the median value of RadarCells in kernel, and the standard deviation
 /// of those cells which are within two standard deviations of the mean of cells in kernel.
+///
 /// The parameter `f` is a function which extracts the parameter from an entry of kernel.
 /// The parameter `g` is used to extract the parameter for sorting (which may be different than the
 /// parameter having its median value calculated)
+///
 /// Returns the median and standard deviation.
 fn calculate_median_sigma(
     kernel: &mut Vec<&RadarCell>,
@@ -65,12 +67,14 @@ fn calculate_median_sigma(
     (median, sigma)
 }
 
-/// Performs median filtering on a sequence of RadarScans. The filter operates on each range/beam
-/// cell, with a 3x3x3 weighted kernel of range/beam/time. If the weighted sum of valid cells in
-/// the kernel exceeds a threshold, the median value of each parameter (velocity, power, and
-/// spectral width) is determined from the kernel. Otherwise, the output cell is considered empty.
-/// The associated parameter errors are calculated from the standard deviations of the input
-/// parameters.
+/// Performs median filtering on a sequence of RadarScans.
+///
+/// The filter operates on each range/beam cell, with a 3x3x3 weighted kernel of range/beam/time.
+/// If the weighted sum of valid cells in the kernel exceeds a threshold, the median value of each
+/// parameter (velocity, power, and spectral width) is determined from the kernel. Otherwise, the
+/// output cell is considered empty. The associated parameter errors are calculated from the
+/// standard deviations of the input parameters.
+///
 /// Called FilterRadarScan in filter.c of RST.
 pub fn median_filter(
     mode: i32,
@@ -394,7 +398,6 @@ pub fn median_filter(
             // If the sum of weights of cells with scatter in the kernel is less than the threshold
             // then continue
             if weight <= threshold[mode as usize % 2] {
-                // println!("skipping beam {beam_num} range {range}, weight={weight}");
                 continue;
             }
 
@@ -409,7 +412,6 @@ pub fn median_filter(
             out_cell.spectral_width_lin = 0.0;
             out_cell.velocity = 0.0;
 
-            // TODO: Figure out how to properly check param (RST does bitwise checks)
             // Perform velocity median filtering if specified
             let mut compare_fn: fn(&RadarCell) -> f32 = |x| x.velocity;
             if param % 2 == 1 {
