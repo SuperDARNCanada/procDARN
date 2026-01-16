@@ -198,7 +198,6 @@ impl GridTable {
         time: DateTime<Utc>,
         scan_beam: &RadarBeam,
         chisham: bool,
-        old_aacgm: bool,
     ) -> Result<usize, GridError> {
         let velocity_correction: f32 =
             (2.0 * PI / 86400.0) * RADIUS_EARTH * 1000.0 * hdw.latitude.to_radians().cos();
@@ -239,7 +238,6 @@ impl GridTable {
                 grid_beam.rx_rise as f32,
                 altitude,
                 chisham,
-                old_aacgm,
             )?;
 
             // Ensure magnetic azimuth and longitude between 0-360 degrees
@@ -327,7 +325,6 @@ impl GridTable {
         iflg: bool,
         altitude: f32,
         chisham: bool,
-        old_aacgm: bool,
     ) -> Result<(), GridError> {
         let time_micros =
             (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
@@ -353,7 +350,7 @@ impl GridTable {
             }
             let beam_index = match self.find_beam(scan_beam) {
                 Some(i) => i,
-                None => self.add_beam(hdw, altitude, time, scan_beam, chisham, old_aacgm)?,
+                None => self.add_beam(hdw, altitude, time, scan_beam, chisham)?,
             };
             let grid_beam = &self.beams[beam_index];
 

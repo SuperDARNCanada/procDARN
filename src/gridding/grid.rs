@@ -266,10 +266,6 @@ pub struct GridArgs {
     #[arg(long, visible_alias = "chisham", action = clap::ArgAction::SetTrue)]
     pub chisham_flag: bool,
 
-    // todo: accept old_aacgm
-    // /// Map data using old AACGM coefficients, rather than v2
-    // #[arg(long, visible_alias = "old_aacgm", action = clap::ArgAction::SetTrue)]
-    // pub old_aacgm_flag: bool,
     /// Verbose mode
     #[arg(short, long, action = clap::ArgAction::SetTrue)]
     pub verbose: bool,
@@ -653,7 +649,6 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
                     args.inertial_frame_flag,
                     args.altitude,
                     args.chisham_flag,
-                    false, // todo: args.old_aacgm_flag,
                 )?;
             }
 
@@ -690,6 +685,5 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
         }
     }
 
-    // Write to file
     Ok(records_for_file)
 }

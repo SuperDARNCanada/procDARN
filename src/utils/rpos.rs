@@ -426,7 +426,6 @@ pub fn rpos_inv_mag(
     rx_rise: f32,
     altitude: f32,
     chisham: bool,
-    _old_aacgm: bool,
 ) -> Result<(MagneticCoords, f32, f32), GridError> {
     let site_location_geod = GeodeticCoords::new(
         hdw.latitude.to_radians() as f64,
@@ -721,7 +720,6 @@ mod tests {
             rx_rise_time,
             altitude,
             chisham,
-            false,
         )
         .unwrap();
         assert_relative_eq!(coords.lon.to_degrees(), -80.964827995, max_relative = rel);
