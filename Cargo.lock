@@ -5,6 +5,7 @@ version = 3
 [[package]]
 name = "aacgmv2-rs"
 version = "0.1.0"
+source = "git+https://github.com/SuperDARNCanada/aacgmv2-rs.git?branch=main#86f64820878ea73d8259d52a7e78089a0c616fe6"
 dependencies = [
  "bindgen",
  "cc",
@@ -989,6 +990,7 @@ dependencies = [
 [[package]]
 name = "igrf"
 version = "0.2.1"
+source = "git+https://github.com/SuperDARNCanada/igrf.git?branch=main#333373d5d2a07537b5cff8a996d38de88150a497"
 dependencies = [
  "thiserror",
  "time",

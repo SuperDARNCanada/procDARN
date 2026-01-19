@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.74.1"
 
 [dependencies]
-aacgmv2-rs = { version = "0.1.0", path = "/home/remington/repos/aacgmv2-rs"}
+aacgmv2-rs = { git = "https://github.com/SuperDARNCanada/aacgmv2-rs.git", branch = "main" }
 chrono = "0.4.24"
 clap = { version = "4.2.7", features = ["derive"] }
 indexmap = "2.3.0"
@@ -18,7 +18,7 @@ rust-embed = "6.6.1"
 rayon = "1.7.0"
 thiserror = "1.0.64"
 geodesy = "0.11.0"
-igrf = { version = "0.2.1", path = "/home/remington/repos/igrf" }
+igrf = { git = "https://github.com/SuperDARNCanada/igrf.git", branch = "main" }
 time = "0.3.30"
 
 [build-dependencies]
