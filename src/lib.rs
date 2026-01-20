@@ -104,7 +104,7 @@ fn fit2grid_py(
 ) -> PyResult<Vec<IndexMap<String, DmapField>>> {
     let args = match py_kwargs {
         Some(kwargs) => kwargs.extract()?,
-        None => GridArgs::parse_from(vec![""]),
+        None => GridArgs::parse_from(vec!["fit2grid"]),
     };
 
     let (errors, formatted_recs): (Vec<_>, Vec<_>) =
@@ -135,7 +135,7 @@ fn fit2grid_py(
 fn fit2grid_file_py(fitacf_files: Vec<PathBuf>, grid_file: PathBuf, py_kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
     let args = match py_kwargs {
         Some(kwargs) => kwargs.extract()?,
-        None => GridArgs::parse_from(vec![""]),
+        None => GridArgs::parse_from(vec!["fit2grid"]),
     };
     let grid_recs = fit2grid_file(&fitacf_files, &args)?;
     dmap::write_grid(grid_recs, &grid_file)?;
@@ -158,7 +158,7 @@ pub struct GridArgsCLI {
 
 /// Converts a set of FITACF files into a GRID file.
 #[pyfunction]
-#[pyo3(name = "fit2grid")]
+#[pyo3(name = "fit2grid_cli")]
 fn fit2grid_cli(py: Python) -> PyResult<()> {
     let argv = py
         .import_bound("sys")?
