@@ -6,11 +6,11 @@ use crate::utils::hdw::{HdwError, HdwInfo};
 use crate::utils::scan::RadarScan;
 use crate::utils::search::fit_seek;
 use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Utc};
-use clap::{arg, Parser};
+use clap::Parser;
 use dmap::error::DmapError;
-use dmap::formats::grid::GridRecord;
+use dmap::formats::{fitacf::FitacfRecord, grid::GridRecord};
 use pyo3::exceptions::PyValueError;
-use pyo3::PyErr;
+use pyo3::{FromPyObject, PyErr};
 use std::os::raw::c_int;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -62,16 +62,9 @@ impl From<GridError> for PyErr {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, FromPyObject)]
 #[command(author, version, about, long_about = None)]
 pub struct GridArgs {
-    /// Output grid file path
-    pub outfile: PathBuf,
-
-    /// Fitacf file(s) to grid
-    #[arg(num_args = 1.., last = true)]
-    pub infiles: Vec<PathBuf>,
-
     /// Start time in HH:MM format
     #[arg(long, visible_alias = "st")]
     pub start_time: Option<String>,
@@ -271,11 +264,25 @@ pub struct GridArgs {
     pub verbose: bool,
 }
 
-/// Takes a list of fitacf files and converts them into grid files.
-pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
-    let mut grid_table = GridTable {
-        ..Default::default()
-    };
+/// Grids a list of fitacf files.
+pub fn fit2grid_file(infiles: &[PathBuf], args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
+    let mut grid_recs: Vec<GridRecord> = vec![];
+    
+    for infile in infiles.into_iter() {
+        if args.verbose {
+            println!("\nGridding file {}", infile.display())
+        };
+        let fitacf_records = dmap::read_fitacf(infile.clone())?;    
+        let mut grids = fit2grid(&args, &fitacf_records)?;
+        grid_recs.append(&mut grids);
+    }
+
+    Ok(grid_recs)
+}
+
+/// Takes a list of fitacf records and converts them into grid records.
+pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<GridRecord>, GridError> {
+    let mut grid_table = GridTable::default();
 
     // If "filter_weighting_mode" greater than 0, decrement it by one
     let mut filter_weighting_mode = args.filter_weighting;
@@ -342,347 +349,328 @@ pub fn fit2grid(args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
     let mut records_for_file: Vec<GridRecord> = vec![];
     let mut found_scan: bool;
 
-    for infile in args.infiles.clone().into_iter() {
-        if args.verbose {
-            println!("\nGridding file {}", infile.display())
-        };
-        let fitacf_records = dmap::read_fitacf(infile.clone())?;
-
-        // Get the first scan from the file
-        match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
-            Ok((x, num_read)) => {
-                current_scans[index] = x;
-                found_scan = true;
-                record_idx = Some(num_read);
-            }
-            Err(e) => {
-                if args.verbose {
-                    println!("Unable to get first scan from {} - {e}", infile.display())
-                };
-                continue;
-            }
-        };
-
-        let file_datetime = current_scans[index].start_time;
-
-        // Determine the starting time for gridding based on the record and input options
-        let mut start_time = file_datetime;
-        if !found_record {
-            if let (None, None) = (&args.start_date, &args.start_time) {
-                start_time = current_scans[0].start_time;
-                found_record = true;
-            } else {
-                let date_string = match &args.start_date {
-                    Some(d) => d.clone(),
-                    None => current_scans[0].start_time.format("%Y%m%d").to_string(),
-                };
-
-                let time_string = match &args.start_time {
-                    Some(t) => format!("{}", t),
-                    // The None branch truncates back to the start of the minute
-                    None => current_scans[0].start_time.format("%H:%M").to_string(),
-                };
-
-                start_time = NaiveDateTime::parse_from_str(
-                    format!("{} {}", date_string, time_string).as_str(),
-                    "%Y%m%d %H:%M",
-                )
-                .map_err(|_| {
-                    ProcdarnError::Timestamp(
-                        "Unable to parse date and/or time from options or file".to_string(),
-                    )
-                })?
-                .and_utc();
-                if args.verbose {
-                    println!("start_time: {start_time}")
-                };
-                // If applying boxcar median filter then we need to load data prior to the usual start
-                // time, so start_time needs to be adjusted
-                if num_averages > 1 {
-                    match args.scan_length {
-                        Some(x) => {
-                            start_time -= TimeDelta::new(x as i64, 0).ok_or_else(|| {
-                                ProcdarnError::Timestamp(
-                                    "Out of bounds duration when adjusting start_time".to_string(),
-                                )
-                            })?
-                        }
-                        None => {
-                            let td = current_scans[0].end_time - current_scans[0].start_time
-                                + TimeDelta::seconds(15);
-                            start_time -= td;
-                        }
-                    }
-                }
-
-                // Find the first record which occurs after the grid start time, if any
-                if let Ok(Some((_, idx))) = fit_seek(&fitacf_records, start_time) {
-                    record_idx = Some(idx);
-                } else {
-                    if args.verbose {
-                        println!(
-                            "Ignoring file {} as it ends before requested start time",
-                            infile.display()
-                        );
-                    }
-                    continue;
-                }
-                found_record = true;
-
-                // If using scan flag, go to the next beginning of the next scan
-                if let None = args.scan_length {
-                    if let Some(x) = record_idx {
-                        let mut scan_flags: Vec<i16> = vec![];
-                        for rec in fitacf_records[x..].iter() {
-                            let scn_flg = i16::try_from(
-                                rec.get(&"scan".to_string())
-                                    .ok_or_else(|| {
-                                        GridError::InvalidFitacf(format!(
-                                            "missing `scan` flag in {}",
-                                            infile.display()
-                                        ))
-                                    })?
-                                    .clone(),
-                            )
-                            .map_err(|_| {
-                                GridError::InvalidFitacf(format!(
-                                    "bad `scan` flag in {}",
-                                    infile.display()
-                                ))
-                            })?;
-                            scan_flags.push(scn_flg);
-                        }
-                        record_idx = Some(
-                            scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
-                                GridError::InvalidFitacf(format!(
-                                    "No records with set `scan` flag in {}",
-                                    infile.display()
-                                ))
-                            })? + x,
-                        );
-                    } else {
-                        return Err(GridError::BadArgs(
-                            "No records match requested scan time".to_string(),
-                        ));
-                    }
-                }
-
-                // Read the first full scan of data corresponding to grid start datetime
-                let first_idx = record_idx.unwrap_or_else(|| 0);
-                if args.verbose {
-                    println!("Gridding starting at record {first_idx}");
-                }
-                if let Ok((scan, recs_read)) =
-                    RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length)
-                {
-                    found_scan = true;
-                    current_scans[0] = scan;
-                    record_idx = Some(record_idx.unwrap() + recs_read);
-                } else {
-                    found_scan = false;
-                }
-            }
+    // Get the first scan from the file
+    match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
+        Ok((x, num_read)) => {
+            current_scans[index] = x;
+            found_scan = true;
+            record_idx = Some(num_read);
         }
+        Err(e) => {
+            return Err(GridError::InvalidFitacf(format!("Unable to get first scan from records - {e}")))
+        }
+    };
 
-        if found_record {
-            if let Some(x) = &args.interval {
-                let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
-                let dur = dt
-                    - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| {
-                        GridError::BadArgs(
-                            "This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)"
-                                .to_string(),
-                        )
-                    })?;
-                end_time = Some(start_time + dur);
-            } else {
-                end_time = match &args.end_time {
-                    Some(t) => {
-                        let time_string = format!("{}", t);
-                        let date_string = match &args.end_date {
-                            Some(d) => format!("{}", d),
-                            None => current_scans[0].start_time.format("%Y%m%d").to_string(),
-                        };
-                        NaiveDateTime::parse_from_str(
-                            format!("{} {}", date_string, time_string).as_str(),
-                            "%Y%m%d %H:%M",
-                        )
-                        .map_err(|_| {
-                            GridError::BadArgs(
-                                "Unable to parse end date and/or time from options".to_string(),
+    let file_datetime = current_scans[index].start_time;
+
+    // Determine the starting time for gridding based on the record and input options
+    let mut start_time = file_datetime;
+    if !found_record {
+        if let (None, None) = (&args.start_date, &args.start_time) {
+            start_time = current_scans[0].start_time;
+            found_record = true;
+        } else {
+            let date_string = match &args.start_date {
+                Some(d) => d.clone(),
+                None => current_scans[0].start_time.format("%Y%m%d").to_string(),
+            };
+
+            let time_string = match &args.start_time {
+                Some(t) => format!("{}", t),
+                // The None branch truncates back to the start of the minute
+                None => current_scans[0].start_time.format("%H:%M").to_string(),
+            };
+
+            start_time = NaiveDateTime::parse_from_str(
+                format!("{} {}", date_string, time_string).as_str(),
+                "%Y%m%d %H:%M",
+            )
+            .map_err(|_| {
+                ProcdarnError::Timestamp(
+                    "Unable to parse date and/or time from options or file".to_string(),
+                )
+            })?
+            .and_utc();
+            if args.verbose {
+                println!("start_time: {start_time}")
+            };
+            // If applying boxcar median filter then we need to load data prior to the usual start
+            // time, so start_time needs to be adjusted
+            if num_averages > 1 {
+                match args.scan_length {
+                    Some(x) => {
+                        start_time -= TimeDelta::new(x as i64, 0).ok_or_else(|| {
+                            ProcdarnError::Timestamp(
+                                "Out of bounds duration when adjusting start_time".to_string(),
                             )
                         })?
-                        .and_utc()
-                        .into()
                     }
-                    None => None,
-                };
-            }
-            if num_averages != 1 && end_time.is_some() {
-                if args.record_interval != 0 {
-                    let dt = TimeDelta::seconds(args.record_interval as i64);
-                    end_time = Some(end_time.unwrap() + dt);
-                } else {
-                    let td = current_scans[0].end_time - current_scans[0].start_time
-                        + TimeDelta::seconds(15);
-                    end_time = Some(end_time.unwrap() + td);
+                    None => {
+                        let td = current_scans[0].end_time - current_scans[0].start_time
+                            + TimeDelta::seconds(15);
+                        start_time -= td;
+                    }
                 }
             }
-        }
 
-        let year = start_time.year() as c_int;
-        let month = start_time.month() as c_int;
-        let day = start_time.day() as c_int;
-        unsafe {
-            aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
-        }
-        num_scans += 1;
+            // Find the first record which occurs after the grid start time, if any
+            if let Ok(Some((_, idx))) = fit_seek(&fitacf_records, start_time) {
+                record_idx = Some(idx);
+            } else {
+                return Err(GridError::InvalidFitacf("Records end before requested start time".to_string()))
+            }
+            found_record = true;
 
-        // Grid all data until end of gridding time or end of file
-        while found_scan {
-            // Exclude scatter in beams listed in args.exclude_beams
-            if let Some(b) = &args.exclude_beams {
-                if args.verbose {
-                    println!("excluding beams {:?}", &args.exclude_beams)
-                };
-                current_scans[index].reset_beams(b)?;
+            // If using scan flag, go to the next beginning of the next scan
+            if let None = args.scan_length {
+                if let Some(x) = record_idx {
+                    let mut scan_flags: Vec<i16> = vec![];
+                    for rec in fitacf_records[x..].iter() {
+                        let scn_flg = i16::try_from(
+                            rec.get(&"scan".to_string())
+                                .ok_or_else(|| {
+                                    GridError::InvalidFitacf(format!(
+                                        "missing `scan` flag"
+                                    ))
+                                })?
+                                .clone(),
+                        )
+                        .map_err(|_| {
+                            GridError::InvalidFitacf(format!(
+                                "bad `scan` flag",
+                            ))
+                        })?;
+                        scan_flags.push(scn_flg);
+                    }
+                    record_idx = Some(
+                        scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
+                            GridError::InvalidFitacf(format!(
+                                "No records with set `scan` flag"
+                            ))
+                        })? + x,
+                    );
+                } else {
+                    return Err(GridError::BadArgs(
+                        "No records match requested scan time".to_string(),
+                    ));
+                }
             }
 
-            // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
-            if args.exclude_neg_scan_flag {
-                if args.verbose {
-                    println!("excluding data with negative scan flag")
-                };
-                current_scans[index].exclude_outofscan();
-            }
-
-            // Exclude scatter in range gates below args.min_range_gate or above args.max_range_gate
+            // Read the first full scan of data corresponding to grid start datetime
+            let first_idx = record_idx.unwrap_or_else(|| 0);
             if args.verbose {
-                println!(
-                    "Excluding ranges outside [{:?}, {:?}] and slant range outside [{:?}, {:?}]",
-                    args.min_range_gate,
-                    args.max_range_gate,
-                    args.min_slant_range,
-                    args.max_slant_range
-                );
+                println!("Gridding starting at record {first_idx}");
             }
+            if let Ok((scan, recs_read)) =
+                RadarScan::get_first_scan(&fitacf_records[first_idx..], args.scan_length)
+            {
+                found_scan = true;
+                current_scans[0] = scan;
+                record_idx = Some(record_idx.unwrap() + recs_read);
+            } else {
+                found_scan = false;
+            }
+        }
+    }
 
-            current_scans[index].exclude_range(
+    if found_record {
+        if let Some(x) = &args.interval {
+            let dt = NaiveTime::parse_from_str(x, "%H:%M")?;
+            let dur = dt
+                - NaiveTime::from_hms_opt(0, 0, 0).ok_or_else(|| {
+                    GridError::BadArgs(
+                        "This should never happen, trying to make NaiveTime::from_hms(0, 0, 0)"
+                            .to_string(),
+                    )
+                })?;
+            end_time = Some(start_time + dur);
+        } else {
+            end_time = match &args.end_time {
+                Some(t) => {
+                    let time_string = format!("{}", t);
+                    let date_string = match &args.end_date {
+                        Some(d) => format!("{}", d),
+                        None => current_scans[0].start_time.format("%Y%m%d").to_string(),
+                    };
+                    NaiveDateTime::parse_from_str(
+                        format!("{} {}", date_string, time_string).as_str(),
+                        "%Y%m%d %H:%M",
+                    )
+                    .map_err(|_| {
+                        GridError::BadArgs(
+                            "Unable to parse end date and/or time from options".to_string(),
+                        )
+                    })?
+                    .and_utc()
+                    .into()
+                }
+                None => None,
+            };
+        }
+        if num_averages != 1 && end_time.is_some() {
+            if args.record_interval != 0 {
+                let dt = TimeDelta::seconds(args.record_interval as i64);
+                end_time = Some(end_time.unwrap() + dt);
+            } else {
+                let td = current_scans[0].end_time - current_scans[0].start_time
+                    + TimeDelta::seconds(15);
+                end_time = Some(end_time.unwrap() + td);
+            }
+        }
+    }
+
+    let year = start_time.year() as c_int;
+    let month = start_time.month() as c_int;
+    let day = start_time.day() as c_int;
+    unsafe {
+        aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
+    }
+    num_scans += 1;
+
+    // Grid all data until end of gridding time or end of file
+    while found_scan {
+        // Exclude scatter in beams listed in args.exclude_beams
+        if let Some(b) = &args.exclude_beams {
+            if args.verbose {
+                println!("excluding beams {:?}", &args.exclude_beams)
+            };
+            current_scans[index].reset_beams(b)?;
+        }
+
+        // Exclude data with scan flag == -1 if args.exclude_neg_scan_flag given
+        if args.exclude_neg_scan_flag {
+            if args.verbose {
+                println!("excluding data with negative scan flag")
+            };
+            current_scans[index].exclude_outofscan();
+        }
+
+        // Exclude scatter in range gates below args.min_range_gate or above args.max_range_gate
+        if args.verbose {
+            println!(
+                "Excluding ranges outside [{:?}, {:?}] and slant range outside [{:?}, {:?}]",
                 args.min_range_gate,
                 args.max_range_gate,
                 args.min_slant_range,
-                args.max_slant_range,
+                args.max_slant_range
             );
+        }
 
-            // Exclude groundscatter or ionospheric scatter, depending on the args given
-            if args.groundscatter_only_flag {
-                if args.verbose {
-                    println!("excluding ionospheric scatter")
-                };
-                current_scans[index].exclude_ionospheric_scatter();
-            } else if args.ionosphere_only_flag {
-                if args.verbose {
-                    println!("excluding ground scatter")
-                };
-                current_scans[index].exclude_groundscatter();
-            }
+        current_scans[index].exclude_range(
+            args.min_range_gate,
+            args.max_range_gate,
+            args.min_slant_range,
+            args.max_slant_range,
+        );
 
-            // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
-            if !args.op_param_flag {
-                if args.verbose {
-                    println!("Excluding out of bounds")
-                };
-                current_scans[index].exclude_outofbounds(&grid_table);
-            }
+        // Exclude groundscatter or ionospheric scatter, depending on the args given
+        if args.groundscatter_only_flag {
+            if args.verbose {
+                println!("excluding ionospheric scatter")
+            };
+            current_scans[index].exclude_ionospheric_scatter();
+        } else if args.ionosphere_only_flag {
+            if args.verbose {
+                println!("excluding ground scatter")
+            };
+            current_scans[index].exclude_groundscatter();
+        }
 
-            // If enough scans have been loaded and args.no_limit not given, check to make sure the
-            // first range, range separation, and transmit frequency have not changed significantly
-            let mut passed_check = true;
-            if num_scans >= current_scans.capacity()
-                && !args.no_limits_flag
-                && filter_weighting_mode != -1
-            {
-                passed_check = check_operational_params(&current_scans, args.max_frequency_var);
-            }
+        // Exclude scatter outside power, velocity, spectral width, and velocity error bounds
+        if !args.op_param_flag {
+            if args.verbose {
+                println!("Excluding out of bounds")
+            };
+            current_scans[index].exclude_outofbounds(&grid_table);
+        }
 
-            // If enough scans have been loaded, proceed with filtering and gridding
-            if passed_check && num_scans >= current_scans.capacity() {
-                let grid_record = match filter_weighting_mode {
-                    -1 => current_scans[index].clone(),
-                    _ => median_filter(
-                        filter_weighting_mode,
-                        current_scans.capacity() as u32,
-                        index as i32,
-                        15,
-                        args.sort_params_flag,
-                        &current_scans,
-                    )?,
-                };
+        // If enough scans have been loaded and args.no_limit not given, check to make sure the
+        // first range, range separation, and transmit frequency have not changed significantly
+        let mut passed_check = true;
+        if num_scans >= current_scans.capacity()
+            && !args.no_limits_flag
+            && filter_weighting_mode != -1
+        {
+            passed_check = check_operational_params(&current_scans, args.max_frequency_var);
+        }
 
-                // If not already done, load HdwInfo for radar
-                let hdw_params = match hdw_info {
-                    Some(ref x) => x,
-                    None => &HdwInfo::new(grid_record.station_id, start_time)?,
-                };
-
-                // Test whether the grid table should be written to file
-                if grid_table.test(&grid_record) {
-                    // If GridTable good and grid record starts at or after start_time, write to file
-                    if grid_table.start_time >= start_time {
-                        if !args.verbose {
-                            println!(
-                                "Storing: {} {} pnts={}",
-                                grid_table.start_time.format("%Y-%m-%d %H:%M:%S"),
-                                grid_table.end_time.format("%H:%M:%S"),
-                                grid_table.num_points_npnt
-                            );
-                        }
-                        records_for_file.push(grid_table.to_dmap_record(args.extended_mode_flag)?);
-                    }
-                }
-
-                // Map GridTable to equal-area grid in magnetic coordinates
-                grid_table.map(
-                    &grid_record,
-                    &hdw_params,
-                    args.record_interval as i32,
-                    args.inertial_frame_flag,
-                    args.altitude,
-                    args.chisham_flag,
-                )?;
-            }
-
-            // Update index
-            index += 1;
-            if index >= current_scans.capacity() {
-                index = 0;
-            }
-
-            // Get the next scan
-            let start_idx = record_idx.unwrap_or_else(|| 0);
-            let scan_res =
-                RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
-            match scan_res {
-                Ok((new_scan, num_read)) => {
-                    found_scan = true;
-                    current_scans[index] = new_scan;
-                    record_idx = Some(start_idx + num_read);
-                }
-                Err(ProcdarnError::ZeroRecords(_)) => {
-                    found_scan = false;
-                    record_idx = None;
-                }
-                Err(e) => Err(e)?,
+        // If enough scans have been loaded, proceed with filtering and gridding
+        if passed_check && num_scans >= current_scans.capacity() {
+            let grid_record = match filter_weighting_mode {
+                -1 => current_scans[index].clone(),
+                _ => median_filter(
+                    filter_weighting_mode,
+                    current_scans.capacity() as u32,
+                    index as i32,
+                    15,
+                    args.sort_params_flag,
+                    &current_scans,
+                )?,
             };
 
-            // If scan starts after end_time, this file is done being gridded
-            if let Some(dt) = end_time {
-                if current_scans[index].start_time > dt {
-                    break;
+            // If not already done, load HdwInfo for radar
+            let hdw_params = match hdw_info {
+                Some(ref x) => x,
+                None => &HdwInfo::new(grid_record.station_id, start_time)?,
+            };
+
+            // Test whether the grid table should be written to file
+            if grid_table.test(&grid_record) {
+                // If GridTable good and grid record starts at or after start_time, write to file
+                if grid_table.start_time >= start_time {
+                    if !args.verbose {
+                        println!(
+                            "Storing: {} {} pnts={}",
+                            grid_table.start_time.format("%Y-%m-%d %H:%M:%S"),
+                            grid_table.end_time.format("%H:%M:%S"),
+                            grid_table.num_points_npnt
+                        );
+                    }
+                    records_for_file.push(grid_table.to_dmap_record(args.extended_mode_flag)?);
                 }
             }
-            num_scans += 1;
+
+            // Map GridTable to equal-area grid in magnetic coordinates
+            grid_table.map(
+                &grid_record,
+                &hdw_params,
+                args.record_interval as i32,
+                args.inertial_frame_flag,
+                args.altitude,
+                args.chisham_flag,
+            )?;
         }
+
+        // Update index
+        index += 1;
+        if index >= current_scans.capacity() {
+            index = 0;
+        }
+
+        // Get the next scan
+        let start_idx = record_idx.unwrap_or_else(|| 0);
+        let scan_res =
+            RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
+        match scan_res {
+            Ok((new_scan, num_read)) => {
+                found_scan = true;
+                current_scans[index] = new_scan;
+                record_idx = Some(start_idx + num_read);
+            }
+            Err(ProcdarnError::ZeroRecords(_)) => {
+                found_scan = false;
+                record_idx = None;
+            }
+            Err(e) => Err(e)?,
+        };
+
+        // If scan starts after end_time, this file is done being gridded
+        if let Some(dt) = end_time {
+            if current_scans[index].start_time > dt {
+                break;
+            }
+        }
+        num_scans += 1;
     }
 
     Ok(records_for_file)

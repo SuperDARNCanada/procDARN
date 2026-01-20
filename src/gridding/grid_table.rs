@@ -20,7 +20,7 @@ pub const WIDTH_LIN_ERROR_MIN: f32 = 1.0; // m/s
 
 pub const RADIUS_EARTH: f32 = 6371.2; // km
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GridBeam {
     pub beam: i32,             // bm in RST
     pub first_range: i32,      // frang in RST, km
@@ -33,7 +33,7 @@ pub struct GridBeam {
     pub index: Vec<i32>,       // inx in RST
 }
 
-#[derive(Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct GridPoint {
     pub max: i32,                   // max in RST
     pub count: i32,                 // cnt in RST
@@ -66,7 +66,7 @@ impl GridPoint {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GridTable {
     pub start_time: DateTime<Utc>, // st_time in RST
     pub end_time: DateTime<Utc>,   // ed_time in RST

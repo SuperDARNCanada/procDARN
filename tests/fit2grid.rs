@@ -4,7 +4,7 @@ use dmap::formats::grid::GridRecord;
 use dmap::record::Record;
 use dmap::types::{DmapField, DmapScalar, DmapVec};
 use itertools::enumerate;
-use procdarn::gridding::grid::{fit2grid, GridArgs};
+use procdarn::gridding::grid::{fit2grid_file, GridArgs};
 use std::iter::zip;
 use std::path::PathBuf;
 
@@ -66,8 +66,14 @@ fn compare_grid_recs(left_recs: Vec<GridRecord>, right_recs: Vec<GridRecord>) {
 }
 
 fn test_grid_with_args(args: &GridArgs, rst_args: Vec<String>) {
+    let fitacf_files: Vec<PathBuf> = glob::glob("tests/test_files/fitacfs/*inv*")
+        .expect("Could not find fitacf files")
+        .map(|x| x.expect("Could not read fitacf file"))
+        .collect();
+    let fitacf_files = vec![fitacf_files[0].clone()];
+
     // Create grid file
-    let grid_recs = fit2grid(args).expect("Unable to make grid from fitacf");
+    let grid_recs = fit2grid_file(&fitacf_files, args).expect("Unable to make grid from fitacf");
 
     // Create grid file using same arguments in RST
     let output = std::process::Command::new("make_grid")
@@ -90,8 +96,6 @@ fn init_test_env() -> (GridArgs, Vec<String>) {
     let fitacf_files = vec![fitacf_files[0].clone()];
 
     let args = GridArgs {
-        outfile: "tests/test_files/out.grid".to_string().into(),
-        infiles: fitacf_files.clone(),
         start_time: None,
         end_time: None,
         start_date: None,

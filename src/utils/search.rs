@@ -5,11 +5,11 @@ use dmap::formats::fitacf::FitacfRecord;
 /// Finds the first FitacfRecord in fitacf_records which occurs at or after date_time.
 /// Called FitSeek/FitFSeek in RST
 pub fn fit_seek(
-    fitacf_records: &Vec<FitacfRecord>,
+    fitacf_records: &[FitacfRecord],
     date_time: DateTime<Utc>,
 ) -> Result<Option<(&FitacfRecord, usize)>, ProcdarnError> {
     let mut record_times: Vec<DateTime<Utc>> = vec![];
-    for rec in fitacf_records {
+    for rec in fitacf_records.iter() {
         let tstamp = NaiveDate::from_ymd_opt(
             i32::try_from(
                 rec.get(&"time.yr".to_string())
