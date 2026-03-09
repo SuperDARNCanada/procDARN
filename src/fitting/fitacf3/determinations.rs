@@ -1,10 +1,10 @@
 use crate::fitting::fitacf3::fitacf_v3::Fitacf3Error;
 use crate::fitting::fitacf3::fitstruct::RangeNode;
-use crate::utils::dmap::convert_to_dmapvec;
 use crate::utils::hdw::HdwInfo;
 use crate::utils::rawacf::Rawacf;
 use chrono::Utc;
-use dmap::formats::{dmap::Record, fitacf::FitacfRecord};
+use dmap::formats::fitacf::FitacfRecord;
+use dmap::record::Record;
 use dmap::types::DmapField;
 use indexmap::IndexMap;
 use numpy::ndarray::{Array, Array1};
@@ -430,7 +430,8 @@ fn calculate_elevation(
         elevation_corr *= -1.0;
     }
     let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
-    let cos_phi_0 = (hdw.boresight_shift + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
+    let cos_phi_0 = (hdw.boresight_shift
+        + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
         .to_radians()
         .cos() as f64;
     let wave_num = 2.0 * PI_f64 * (rec.tfreq * KHZ_TO_HZ) as f64 / LIGHTSPEED as f64;
@@ -542,7 +543,9 @@ fn calculate_elevation_v2(
     let psi_sign: f32 = if y > 0.0 { 1.0 } else { -1.0 };
 
     let azimuth_offset = f32::from(hdw.max_num_beams) / 2.0 - 0.5;
-    let phi_0 = (hdw.boresight_shift + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset)).to_radians();
+    let phi_0 = (hdw.boresight_shift
+        + hdw.beam_separation * (f32::from(rec.bmnum) - azimuth_offset))
+        .to_radians();
     let cos_phi_0 = phi_0.cos(); // cp0
     let sin_phi_0 = phi_0.sin(); // sp0
 

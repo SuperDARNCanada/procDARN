@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_embed::RustEmbed;
 use std::io::{BufRead, BufReader};
 use thiserror::Error;
@@ -25,7 +25,7 @@ pub enum HdwError {
 #[derive(Debug)]
 pub struct HdwInfo {
     pub station_id: i16,           // stid in RST
-    pub valid_from: NaiveDateTime, // date, hr, mt, sc in RST
+    pub valid_from: DateTime<Utc>, // date, hr, mt, sc in RST
     pub latitude: f32,             // geolat in RST
     pub longitude: f32,            // geolon in RST
     pub altitude: f32,             // alt in RST
@@ -53,7 +53,7 @@ impl HdwInfo {
     /// * If the `station_id` does not match the known sites
     /// * If the hardware file does not have an entry applicable for the `datetime`
     /// * If the hardware file is not properly formatted
-    pub fn new(station_id: i16, datetime: NaiveDateTime) -> Result<HdwInfo, HdwError> {
+    pub fn new(station_id: i16, datetime: DateTime<Utc>) -> Result<HdwInfo, HdwError> {
         let site_name = match station_id {
             209 => "ade",
             208 => "adw",
@@ -118,7 +118,8 @@ impl HdwInfo {
                 )
                 .map_err(|_| {
                     HdwError::InvalidFile("Unable to parse timeframe from hdw file".to_string())
-                })?;
+                })?
+                .and_utc();
 
                 if datetime < validity_date {
                     break;
