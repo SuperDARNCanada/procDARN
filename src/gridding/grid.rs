@@ -508,8 +508,8 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             };
         }
         if num_averages != 1 && end_time.is_some() {
-            if args.record_interval != 0 {
-                let dt = TimeDelta::seconds(args.record_interval as i64);
+            if let Some(x) = args.scan_length {
+                let dt = TimeDelta::seconds(x as i64);
                 end_time = Some(end_time.unwrap() + dt);
             } else {
                 let td = current_scans[0].end_time - current_scans[0].start_time
