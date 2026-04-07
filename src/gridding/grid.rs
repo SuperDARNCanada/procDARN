@@ -1,3 +1,4 @@
+use aacgmv2_rs::aacgmv2::Aacgmv2;
 use crate::error::ProcdarnError;
 use crate::gridding::filter::{check_operational_params, median_filter};
 use crate::gridding::grid_table::GridTable;
@@ -5,13 +6,12 @@ use crate::utils::channel::{set_fix_channel, set_stereo_channel};
 use crate::utils::hdw::{HdwError, HdwInfo};
 use crate::utils::scan::RadarScan;
 use crate::utils::search::fit_seek;
-use chrono::{DateTime, Datelike, NaiveDateTime, NaiveTime, TimeDelta, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Utc};
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::{fitacf::FitacfRecord, grid::GridRecord};
 use pyo3::exceptions::PyValueError;
 use pyo3::{FromPyObject, PyErr};
-use std::os::raw::c_int;
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -53,6 +53,9 @@ pub enum GridError {
     /// Error in argument specification
     #[error("{0}")]
     BadArgs(String),
+
+    #[error("{0}")]
+    Aacgmv2(#[from] aacgmv2_rs::AACGMv2Error),
 }
 
 impl From<GridError> for PyErr {
@@ -519,12 +522,8 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
         }
     }
 
-    let year = start_time.year() as c_int;
-    let month = start_time.month() as c_int;
-    let day = start_time.day() as c_int;
-    unsafe {
-        aacgmv2_rs::AACGM_v2_SetDateTime(year, month, day, 0, 0, 0);
-    }
+    let date = NaiveDate::from_ymd_opt(start_time.year(), start_time.month(), start_time.day()).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc();
+    let mut aacgm_model = Aacgmv2::new(date).map_err(|e| GridError::Aacgmv2(e))?;
     num_scans += 1;
 
     // Grid all data until end of gridding time or end of file
@@ -634,6 +633,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             grid_table.map(
                 &grid_record,
                 &hdw_params,
+                &mut aacgm_model,
                 args.record_interval as i32,
                 args.inertial_frame_flag,
                 args.altitude,

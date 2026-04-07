@@ -2,6 +2,7 @@ use crate::error::ProcdarnError;
 use igrf::declination;
 use std::f64::consts::PI;
 use std::fmt::Display;
+use aacgmv2_rs::aacgmv2::Aacgmv2;
 use time::Date;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -72,23 +73,20 @@ impl GeocentricCoords {
     /// Converts `self` into AACGMv2 coordinates.
     ///
     /// See https://superdarn.thayer.dartmouth.edu/aacgm.html and doi:10.1002/2014JA020264
-    pub(crate) unsafe fn aacgmv2_convert(&self) -> GeocentricCoords {
-        let mut mag_coords = GeocentricCoords::default();
-        unsafe {
-            aacgmv2_rs::AACGM_v2_Convert(
-                self.lat.to_degrees(),
-                self.lon.to_degrees(),
-                self.rad,
-                &mut mag_coords.lat,
-                &mut mag_coords.lon,
-                &mut mag_coords.rad,
-                0,
-            );
-        }
-        mag_coords.lat = mag_coords.lat.to_radians();
-        mag_coords.lon = mag_coords.lon.to_radians();
+    pub(crate) fn aacgmv2_convert(&self, model: &mut Aacgmv2) -> GeocentricCoords {
+        let new_coords = model.convert(
+            self.lat.to_degrees(),
+            self.lon.to_degrees(),
+            self.rad,
+            &aacgmv2_rs::Transform::GeodeticToAACGMv2,
+            &aacgmv2_rs::Method::Coeffs
+        ).expect("Aacgmv2::convert() failed");
 
-        mag_coords
+        GeocentricCoords {
+            lat: new_coords.0.to_radians(),
+            lon: new_coords.1.to_radians(),
+            rad: new_coords.2,
+        }
     }
 
     /// Calculates the magnetic field at this location.
@@ -273,6 +271,7 @@ impl LocalAngularCoords {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use chrono::NaiveDate;
 
     #[test]
     fn test_geocentric_to_cartesian() {
@@ -330,11 +329,10 @@ mod tests {
         let rel = 1e-7;
 
         let point = GeocentricCoords::geo(69.917246, 226.029209, 114.891407);
-        let mag_point: GeocentricCoords;
-        unsafe {
-            aacgmv2_rs::AACGM_v2_SetDateTime(2025, 7, 12, 0, 0, 0);
-            mag_point = point.aacgmv2_convert();
-        }
+        let date = NaiveDate::from_ymd_opt(2025, 7, 12).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let mut model = Aacgmv2::new(date).unwrap();
+        let mag_point = point.aacgmv2_convert(&mut model);
+
         assert_relative_eq!(mag_point.lat.to_degrees(), 72.507253, max_relative = rel);
         assert_relative_eq!(mag_point.lon.to_degrees(), -81.359931, max_relative = rel);
         assert_relative_eq!(mag_point.rad, 1.016164, max_relative = rel);

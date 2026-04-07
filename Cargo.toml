@@ -5,8 +5,8 @@ edition = "2021"
 rust-version = "1.74.1"
 
 [dependencies]
-aacgmv2-rs = { git = "https://github.com/SuperDARNCanada/aacgmv2-rs.git", branch = "main" }
-chrono = "0.4.24"
+aacgmv2-rs = { git = "https://github.com/SuperDARNCanada/aacgmv2-rs.git", branch = "riir" }
+chrono = "0.4.44"
 clap = { version = "4.2.7", features = ["derive"] }
 indexmap = "2.3.0"
 is_close = "0.1.3"

@@ -4,6 +4,7 @@ use crate::gridding::grid_table::RADIUS_EARTH;
 use crate::utils::coords::{GeocentricCoords, GeodeticCoords, LocalAngularCoords, MagneticCoords};
 use crate::utils::hdw::HdwInfo;
 use std::f64::consts::PI;
+use aacgmv2_rs::aacgmv2::Aacgmv2;
 use time::Date;
 
 /// Calculates the slant range to a range gate in km.
@@ -421,6 +422,7 @@ pub fn rpos_inv_mag(
     range: i32,
     year: i32,
     hdw: &HdwInfo,
+    aacgm_model: &mut Aacgmv2,
     first_range: f32,
     range_sep: f32,
     rx_rise: f32,
@@ -488,10 +490,7 @@ pub fn rpos_inv_mag(
     // Convert cell coordinates from geocentric to AACGM magnetic coordinates
     let mut geoc_with_virtual_height = cell_geoc.clone();
     geoc_with_virtual_height.rad = virtual_height;
-    let mag_coords: GeocentricCoords;
-    unsafe {
-        mag_coords = geoc_with_virtual_height.aacgmv2_convert();
-    }
+    let mag_coords = geoc_with_virtual_height.aacgmv2_convert(aacgm_model);
 
     // Calculate new point given bearing from the radar
     let mut pointing_loc = fieldpoint_sphere(
@@ -501,10 +500,7 @@ pub fn rpos_inv_mag(
     pointing_loc.rad = virtual_height;
 
     // Convert new point into AACGM magnetic coordinates
-    let mut pointing_mag: GeocentricCoords;
-    unsafe {
-        pointing_mag = pointing_loc.aacgmv2_convert();
-    }
+    let mut pointing_mag = pointing_loc.aacgmv2_convert(aacgm_model);
 
     // Make sure pointing_mag_lon lies between +/- 180 degrees
     if pointing_mag.lon - mag_coords.lon > PI {
@@ -526,7 +522,7 @@ pub fn rpos_inv_mag(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    use chrono::TimeZone;
+    use chrono::{NaiveDate, TimeZone};
 
     #[test]
     fn test_fieldpoint_sphere() {
@@ -693,10 +689,6 @@ mod tests {
     fn test_rpos_inv_mag() {
         let rel = 1e-5;
 
-        unsafe {
-            aacgmv2_rs::AACGM_v2_SetDateTime(2025, 7, 12, 0, 0, 0);
-        }
-
         let beam_num = 0;
         let range_gate = 0;
         let year = 2025;
@@ -705,6 +697,8 @@ mod tests {
             chrono::Utc.with_ymd_and_hms(2025, 7, 12, 0, 0, 0).unwrap(),
         )
         .unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 7, 12).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let mut aacgm_model = Aacgmv2::new(date).unwrap();
         let first_range = 180.0;
         let range_sep = 45.0;
         let rx_rise_time = 0.0;
@@ -715,6 +709,7 @@ mod tests {
             range_gate,
             year,
             &hdw,
+            &mut aacgm_model,
             first_range,
             range_sep,
             rx_rise_time,

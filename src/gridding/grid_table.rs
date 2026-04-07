@@ -11,6 +11,7 @@ use numpy::ndarray::array;
 use numpy::ndarray::Array;
 use std::f32::consts::PI;
 use std::iter;
+use aacgmv2_rs::aacgmv2::Aacgmv2;
 
 pub const GRID_REVISION_MAJOR: i32 = 2;
 pub const GRID_REVISION_MINOR: i32 = 0;
@@ -194,6 +195,7 @@ impl GridTable {
     pub fn add_beam(
         &mut self,
         hdw: &HdwInfo,
+        aacgm_model: &mut Aacgmv2,
         altitude: f32,
         time: DateTime<Utc>,
         scan_beam: &RadarBeam,
@@ -233,6 +235,7 @@ impl GridTable {
                 range,
                 time.year(),
                 hdw,
+                aacgm_model,
                 grid_beam.first_range as f32,
                 grid_beam.range_sep as f32,
                 grid_beam.rx_rise as f32,
@@ -321,6 +324,7 @@ impl GridTable {
         &mut self,
         scan: &RadarScan,
         hdw: &HdwInfo,
+        aacgm_model: &mut Aacgmv2,
         tlen: i32,
         iflg: bool,
         altitude: f32,
@@ -350,7 +354,7 @@ impl GridTable {
             }
             let beam_index = match self.find_beam(scan_beam) {
                 Some(i) => i,
-                None => self.add_beam(hdw, altitude, time, scan_beam, chisham)?,
+                None => self.add_beam(hdw, aacgm_model, altitude, time, scan_beam, chisham)?,
             };
             let grid_beam = &self.beams[beam_index];
 
