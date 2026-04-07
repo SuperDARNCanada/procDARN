@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "aacgmv2-rs"
 version = "0.1.0"
-source = "git+https://github.com/SuperDARNCanada/aacgmv2-rs.git?branch=riir#064208e8c0d803d569f5072d8710085b4127c9ae"
+source = "git+https://github.com/SuperDARNCanada/aacgmv2-rs.git?branch=riir#a9fb764733c8fe06992ef1410ea07c077671c317"
 dependencies = [
  "chrono",
  "lazy_static",
