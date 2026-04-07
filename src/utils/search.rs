@@ -1,6 +1,7 @@
 use crate::error::ProcdarnError;
 use chrono::{DateTime, NaiveDate, Utc};
 use dmap::formats::fitacf::FitacfRecord;
+use dmap::Record;
 
 /// Finds the first FitacfRecord in fitacf_records which occurs at or after date_time.
 /// Called FitSeek/FitFSeek in RST

@@ -1,6 +1,7 @@
 use crate::error::ProcdarnError;
 use chrono::{DateTime, NaiveDate, Utc};
 use dmap::formats::fitacf::FitacfRecord;
+use dmap::Record;
 
 /// Gets the timestamp from a `FitacfRecord`
 pub fn get_datetime(rec: &FitacfRecord) -> Result<DateTime<Utc>, ProcdarnError> {

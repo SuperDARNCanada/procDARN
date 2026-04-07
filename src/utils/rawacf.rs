@@ -3,6 +3,7 @@ use crate::utils::hdw::HdwInfo;
 use chrono::{DateTime, NaiveDate, Utc};
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
+use dmap::Record;
 use dmap::types::DmapField;
 use numpy::ndarray::{Array1, Array2, Array3, ArrayD};
 use numpy::{Ix1, Ix2, Ix3};

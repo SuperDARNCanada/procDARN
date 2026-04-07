@@ -5,6 +5,7 @@ use crate::utils::rpos::slant_range;
 use crate::utils::sugar::get_datetime;
 use chrono::{DateTime, TimeDelta, Utc};
 use dmap::formats::fitacf::FitacfRecord;
+use dmap::Record;
 use numpy::ndarray::{Array, ArrayD};
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
@@ -215,12 +216,13 @@ impl RadarScan {
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("tfreq"))?,
-                noise: i32::try_from(
+                noise: f32::try_from(
                     rec.get(&"noise.sky".to_string())
                         .ok_or(ProcdarnError::MissingField("noise.sky"))?
                         .clone(),
                 )
-                .map_err(|_| ProcdarnError::WrongType("noise.sky"))?,
+                .map_err(|_| ProcdarnError::WrongType("noise.sky"))?
+                    .floor() as i32,
                 attenuation: i32::try_from(
                     rec.get(&"atten".to_string())
                         .ok_or(ProcdarnError::MissingField("atten"))?

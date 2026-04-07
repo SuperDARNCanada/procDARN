@@ -10,6 +10,7 @@ use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta,
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::{fitacf::FitacfRecord, grid::GridRecord};
+use dmap::Record;
 use pyo3::exceptions::PyValueError;
 use pyo3::{FromPyObject, PyErr};
 use std::path::PathBuf;
@@ -45,10 +46,6 @@ pub enum GridError {
     /// Error in `igrf` crate
     #[error("{0}")]
     Igrf(#[from] igrf::Error),
-
-    /// Error in `geodesy` crate
-    #[error("{0}")]
-    Geodesy(#[from] geodesy::Error),
 
     /// Error in argument specification
     #[error("{0}")]
@@ -275,7 +272,7 @@ pub fn fit2grid_file(infiles: &[PathBuf], args: &GridArgs) -> Result<Vec<GridRec
         if args.verbose {
             println!("\nGridding file {}", infile.display())
         };
-        let fitacf_records = dmap::read_fitacf(infile.clone())?;    
+        let fitacf_records = FitacfRecord::read_file(infile.clone())?;
         let mut grids = fit2grid(&args, &fitacf_records)?;
         grid_recs.append(&mut grids);
     }

@@ -11,6 +11,7 @@ use pyo3::prelude::{PyAnyMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, PyErr, PyResult, Python};
 use std::path::PathBuf;
 use dmap::formats::fitacf::FitacfRecord;
+use dmap::GridRecord;
 use pyo3::types::PyDict;
 
 pub mod error;
@@ -47,9 +48,9 @@ fn fitacf3_py(
 
 /// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
 fn file_fitacf3(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error> {
-    let rawacf_records = dmap::read_rawacf(raw_file)?;
+    let rawacf_records = RawacfRecord::read_file(raw_file)?;
     let fitacf_records = par_fitacf3(rawacf_records)?;
-    dmap::write_fitacf(fitacf_records, &fit_file)?;
+    FitacfRecord::write_to_file(&fitacf_records, &fit_file, false)?;
     Ok(())
 }
 
@@ -79,16 +80,16 @@ struct Fitacf3Args {
 #[pyo3(name = "fit_fitacf3")]
 fn fitacf3_cli(py: Python) -> PyResult<()> {
     let argv = py
-        .import_bound("sys")?
+        .import("sys")?
         .getattr("argv")?
         .extract::<Vec<String>>()?;
     let args = Fitacf3Args::parse_from(argv);
 
-    let rawacf_records = dmap::read_rawacf(args.infile)?;
+    let rawacf_records = RawacfRecord::read_file(args.infile)?;
     let fitacf_records = par_fitacf3(rawacf_records)?;
 
     // Write to file
-    dmap::write_fitacf(fitacf_records, &args.outfile)?;
+    FitacfRecord::write_to_file(&fitacf_records, &args.outfile, false)?;
     Ok(())
 }
 
@@ -138,7 +139,7 @@ fn fit2grid_file_py(fitacf_files: Vec<PathBuf>, grid_file: PathBuf, py_kwargs: O
         None => GridArgs::parse_from(vec!["fit2grid"]),
     };
     let grid_recs = fit2grid_file(&fitacf_files, &args)?;
-    dmap::write_grid(grid_recs, &grid_file)?;
+    GridRecord::write_to_file(&grid_recs, &grid_file, false)?;
     Ok(())
 }
 
@@ -161,12 +162,12 @@ pub struct GridArgsCLI {
 #[pyo3(name = "fit2grid_cli")]
 fn fit2grid_cli(py: Python) -> PyResult<()> {
     let argv = py
-        .import_bound("sys")?
+        .import("sys")?
         .getattr("argv")?
         .extract::<Vec<String>>()?;
     let args = GridArgsCLI::parse_from(argv);
     let grid_records = fit2grid_file(&args.infiles, &args.grid_args)?;
-    dmap::write_grid(grid_records, &args.outfile)?;
+    GridRecord::write_to_file(&grid_records, &args.outfile, false)?;
     Ok(())
 }
 

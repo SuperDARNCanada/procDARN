@@ -16,10 +16,6 @@ pub enum ProcdarnError {
     #[error("{0}")]
     Igrf(#[from] igrf::Error),
 
-    /// Error in geodesy crate usage
-    #[error("{0}")]
-    Geodesy(#[from] geodesy::Error),
-
     /// Invalid timestamp in a record
     #[error("invalid timestamp `{0}`")]
     Timestamp(String),
