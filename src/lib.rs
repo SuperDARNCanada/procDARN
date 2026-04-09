@@ -21,7 +21,7 @@ pub mod utils;
 
 /// Fits a list of RAWACF records into FITACF records using the FITACFv3 algorithm.
 #[pyfunction]
-#[pyo3(name = "fitacf3")]
+#[pyo3(name = "fitacf3_recs")]
 #[pyo3(text_signature = "(recs: list[dict], /)")]
 fn fitacf3_py(
     mut recs: Vec<IndexMap<String, DmapField>>,
@@ -47,7 +47,7 @@ fn fitacf3_py(
 }
 
 /// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
-fn file_fitacf3(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error> {
+fn fitacf3_file(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error> {
     let rawacf_records = RawacfRecord::read_file(raw_file)?;
     let fitacf_records = par_fitacf3(rawacf_records)?;
     FitacfRecord::write_to_file(&fitacf_records, &fit_file, false)?;
@@ -56,10 +56,10 @@ fn file_fitacf3(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error
 
 /// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
 #[pyfunction]
-#[pyo3(name = "file_fitacf3")]
+#[pyo3(name = "fitacf3_file")]
 #[pyo3(text_signature = "(rawacf_file: str, fitacf_file: str, /)")]
-fn file_fitacf3_py(raw_file: PathBuf, fit_file: PathBuf) -> PyResult<()> {
-    file_fitacf3(raw_file, fit_file)?;
+fn fitacf3_file_py(raw_file: PathBuf, fit_file: PathBuf) -> PyResult<()> {
+    fitacf3_file(raw_file, fit_file)?;
     Ok(())
 }
 
@@ -77,7 +77,7 @@ struct Fitacf3Args {
 
 /// Fits a RAWACF file into a FITACF file using the FITACFv3 algorithm.
 #[pyfunction]
-#[pyo3(name = "fit_fitacf3")]
+#[pyo3(name = "raw2fit")]
 fn fitacf3_cli(py: Python) -> PyResult<()> {
     let argv = py
         .import("sys")?
@@ -96,7 +96,7 @@ fn fitacf3_cli(py: Python) -> PyResult<()> {
 
 /// Converts a list of FITACF records into GRID records.
 #[pyfunction]
-#[pyo3(name = "fit2grid")]
+#[pyo3(name = "fit2grid_recs")]
 #[pyo3(signature = (recs, /, **py_kwargs))]
 #[pyo3(text_signature = "(recs: list[dict], /, **)")]
 fn fit2grid_py(
@@ -159,7 +159,7 @@ pub struct GridArgsCLI {
 
 /// Converts a set of FITACF files into a GRID file.
 #[pyfunction]
-#[pyo3(name = "fit2grid_cli")]
+#[pyo3(name = "fit2grid")]
 fn fit2grid_cli(py: Python) -> PyResult<()> {
     let argv = py
         .import("sys")?
@@ -175,7 +175,7 @@ fn fit2grid_cli(py: Python) -> PyResult<()> {
 #[pymodule]
 fn procdarn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fitacf3_py, m)?)?;
-    m.add_function(wrap_pyfunction!(file_fitacf3_py, m)?)?;
+    m.add_function(wrap_pyfunction!(fitacf3_file_py, m)?)?;
     m.add_wrapped(wrap_pyfunction!(fitacf3_cli))?;
     m.add_function(wrap_pyfunction!(fit2grid_py, m)?)?;
     m.add_function(wrap_pyfunction!(fit2grid_file_py, m)?)?;
