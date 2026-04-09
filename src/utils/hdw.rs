@@ -1,38 +1,60 @@
-use crate::error::BackscatterError;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_embed::RustEmbed;
 use std::io::{BufRead, BufReader};
+use thiserror::Error;
 
 #[derive(RustEmbed)]
 #[folder = "target/hdw/"]
 struct Hdw;
 
+#[derive(Error, Debug)]
+pub enum HdwError {
+    /// Represents a file that does not follow the hdw file format
+    #[error("{0}")]
+    File(String),
+
+    /// Represents trying to use a datetime that isn't covered by the hdw file
+    #[error("{0}")]
+    Datetime(String),
+
+    /// Represents trying to find the hdw file for a non-existent radar
+    #[error("{0}")]
+    Station(i16),
+}
+
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct HdwInfo {
-    pub station_id: i16,
-    pub valid_from: NaiveDateTime,
-    pub latitude: f32,
-    pub longitude: f32,
-    pub altitude: f32,
-    pub boresight: f32,
-    pub boresight_shift: f32,
-    pub beam_separation: f32,
-    pub velocity_sign: f32,
-    pub phase_sign: f32,
-    pub tdiff_a: f32,
-    pub tdiff_b: f32,
-    pub intf_offset_x: f32,
-    pub intf_offset_y: f32,
-    pub intf_offset_z: f32,
-    pub rx_rise_time: f32,
-    pub rx_atten_step: f32,
-    pub attenuation_stages: f32,
-    pub max_num_ranges: i16,
-    pub max_num_beams: i16,
+    pub station_id: i16,           // stid in RST
+    pub valid_from: DateTime<Utc>, // date, hr, mt, sc in RST
+    pub latitude: f32,             // geolat in RST
+    pub longitude: f32,            // geolon in RST
+    pub altitude: f32,             // alt in RST
+    pub boresight: f32,            // boresite in RST
+    pub boresight_shift: f32,      // bmoff in RST
+    pub beam_separation: f32,      // bmsep in RST
+    pub velocity_sign: f32,        // vdir in RST
+    pub phase_sign: f32,           // phidiff in RST
+    pub tdiff_a: f32,              // tdiff[0] in RST
+    pub tdiff_b: f32,              // tdiff[1] in RST
+    pub intf_offset_x: f32,        // interfer[0] in RST
+    pub intf_offset_y: f32,        // interfer[1] in RST
+    pub intf_offset_z: f32,        // interfer[2] in RST
+    pub rx_rise_time: f32,         // recrise in RST
+    pub rx_atten_step: f32,        // atten in RST
+    pub attenuation_stages: f32,   // maxatten in RST
+    pub max_num_ranges: i16,       // maxrange in RST
+    pub max_num_beams: i16,        // maxbeam in RST
 }
 
 impl HdwInfo {
-    pub fn new(station_id: i16, datetime: NaiveDateTime) -> Result<HdwInfo, BackscatterError> {
+    /// Gets the hardware file information for a site at a particular time.
+    ///
+    /// # Errors
+    /// * If the `station_id` does not match the known sites
+    /// * If the hardware file does not have an entry applicable for the `datetime`
+    /// * If the hardware file is not properly formatted
+    pub fn new(station_id: i16, datetime: DateTime<Utc>) -> Result<HdwInfo, HdwError> {
         let site_name = match station_id {
             209 => "ade",
             208 => "adw",
@@ -77,91 +99,118 @@ impl HdwInfo {
             18 => "unw",
             32 => "wal",
             19 => "zho",
-            _ => Err(BackscatterError::new("Invalid station id"))?,
+            x => Err(HdwError::Station(x))?,
         };
-        let hdw_file = Hdw::get(format!("hdw.dat.{}", site_name).as_str()).unwrap();
+        let hdw_file = Hdw::get(format!("hdw.dat.{site_name}").as_str())
+            .ok_or_else(|| HdwError::File(format!("No file named hdw.dat.{site_name}")))?;
         let mut hdw_params: Vec<HdwInfo> = vec![];
         let reader = BufReader::new(hdw_file.data.as_ref()).lines();
         for line in reader {
-            let line =
-                line.map_err(|_| BackscatterError::new("Unable to read line from hdw file"))?;
+            let line = line.map_err(|_| {
+                HdwError::File("Unable to read line from hdw file".to_string())
+            })?;
             if !line.starts_with('#') {
                 let elements: Vec<&str> = line.split_whitespace().collect();
                 let date = elements[2];
                 let time = elements[3];
                 let validity_date = NaiveDateTime::parse_from_str(
-                    format!("{} {}", date, time).as_str(),
+                    format!("{date} {time}").as_str(),
                     "%Y%m%d %H:%M:%S",
                 )
-                .map_err(|_| BackscatterError::new("Unable to read station id from hdw file"))?;
+                .map_err(|_| {
+                    HdwError::File("Unable to parse timeframe from hdw file".to_string())
+                })?
+                .and_utc();
 
                 if datetime < validity_date {
                     break;
-                } //
+                }
                 hdw_params.push(HdwInfo {
                     station_id: elements[0].parse::<i16>().map_err(|_| {
-                        BackscatterError::new("Unable to read station id from hdw file")
+                        HdwError::File("Unable to read station id from hdw file".to_string())
                     })?,
                     valid_from: validity_date,
                     latitude: elements[4].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read latitude from hdw file")
+                        HdwError::File("Unable to read latitude from hdw file".to_string())
                     })?,
                     longitude: elements[5].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read longitude from hdw file")
+                        HdwError::File("Unable to read longitude from hdw file".to_string())
                     })?,
                     altitude: elements[6].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read altitude from hdw file")
+                        HdwError::File("Unable to read altitude from hdw file".to_string())
                     })?,
                     boresight: elements[7].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read boresight from hdw file")
+                        HdwError::File("Unable to read boresight from hdw file".to_string())
                     })?,
                     boresight_shift: elements[8].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read boresightshift from hdw file")
+                        HdwError::File(
+                            "Unable to read boresightshift from hdw file".to_string(),
+                        )
                     })?,
                     beam_separation: elements[9].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read beam separation from hdw file")
+                        HdwError::File(
+                            "Unable to read beam separation from hdw file".to_string(),
+                        )
                     })?,
                     velocity_sign: elements[10].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read velocity sign from hdw file")
+                        HdwError::File(
+                            "Unable to read velocity sign from hdw file".to_string(),
+                        )
                     })?,
                     phase_sign: elements[11].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read phase sign from hdw file")
+                        HdwError::File("Unable to read phase sign from hdw file".to_string())
                     })?,
                     tdiff_a: elements[12].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read tdiff A from hdw file")
+                        HdwError::File("Unable to read tdiff A from hdw file".to_string())
                     })?,
                     tdiff_b: elements[13].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read tdiff B from hdw file")
+                        HdwError::File("Unable to read tdiff B from hdw file".to_string())
                     })?,
                     intf_offset_x: elements[14].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read intf offset X from hdw file")
+                        HdwError::File(
+                            "Unable to read intf offset X from hdw file".to_string(),
+                        )
                     })?,
                     intf_offset_y: elements[15].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read intf offset Y from hdw file")
+                        HdwError::File(
+                            "Unable to read intf offset Y from hdw file".to_string(),
+                        )
                     })?,
                     intf_offset_z: elements[16].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read intf offset Z from hdw file")
+                        HdwError::File(
+                            "Unable to read intf offset Z from hdw file".to_string(),
+                        )
                     })?,
                     rx_rise_time: elements[17].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read rx rise time from hdw file")
+                        HdwError::File(
+                            "Unable to read rx rise time from hdw file".to_string(),
+                        )
                     })?,
                     rx_atten_step: elements[18].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to read rx attenuation from hdw file")
+                        HdwError::File(
+                            "Unable to read rx attenuation from hdw file".to_string(),
+                        )
                     })?,
                     attenuation_stages: elements[19].parse::<f32>().map_err(|_| {
-                        BackscatterError::new("Unable to attenuation stages from hdw file")
+                        HdwError::File(
+                            "Unable to read attenuation stages from hdw file".to_string(),
+                        )
                     })?,
                     max_num_ranges: elements[20].parse::<i16>().map_err(|_| {
-                        BackscatterError::new("Unable to read max number of ranges from hdw file")
+                        HdwError::File(
+                            "Unable to read max number of ranges from hdw file".to_string(),
+                        )
                     })?,
                     max_num_beams: elements[21].parse::<i16>().map_err(|_| {
-                        BackscatterError::new("Unable to read max number of beams from hdw file")
+                        HdwError::File(
+                            "Unable to read max number of beams from hdw file".to_string(),
+                        )
                     })?,
-                })
+                });
             }
         }
-        hdw_params
-            .pop()
-            .ok_or_else(|| BackscatterError::new("No valid lines found in hdw file"))
+        hdw_params.pop().ok_or_else(|| {
+            HdwError::Datetime("No valid lines found in hdw file".to_string())
+        })
     }
 }

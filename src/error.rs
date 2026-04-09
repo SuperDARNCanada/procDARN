@@ -1,21 +1,40 @@
-use std::fmt;
-use std::fmt::Formatter;
+//! Error type for `procdarn`.
+use crate::utils::hdw::HdwError;
+use dmap::error::DmapError;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub struct BackscatterError {
-    pub details: String,
-}
+/// Top-level error object for all processing functions.
+#[derive(Error, Debug)]
+pub enum ProcdarnError {
+    /// Represents a bad DMAP record
+    #[error("{0}")]
+    Dmap(#[from] DmapError),
 
-impl fmt::Display for BackscatterError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.details)
-    }
-}
+    /// Unable to get hdw file information
+    #[error("{0}")]
+    Hdw(#[from] HdwError),
 
-impl BackscatterError {
-    pub fn new(details: &str) -> BackscatterError {
-        BackscatterError {
-            details: details.to_string(),
-        }
-    }
+    /// Error in igrf crate usage
+    #[error("{0}")]
+    Igrf(#[from] igrf::Error),
+
+    /// Invalid timestamp in a record
+    #[error("invalid timestamp `{0}`")]
+    Timestamp(String),
+
+    /// Field missing from a record
+    #[error("missing `{0}`")]
+    MissingField(&'static str),
+
+    /// Field from a record has the wrong type
+    #[error("wrong type for `{0}`")]
+    WrongType(&'static str),
+
+    /// Zero records available
+    #[error("zero records {0}")]
+    ZeroRecords(&'static str),
+
+    /// Invalid channel specifier
+    #[error("invalid channel `{0}`")]
+    Channel(String),
 }
