@@ -17,13 +17,13 @@ fn calculate_mean_sigma(v: &Vec<&RadarCell>, f: fn(&RadarCell) -> f32) -> (f32, 
     for &cell in v.iter() {
         mean += f(cell);
     }
-    mean = mean / v.len() as f32;
+    mean /= v.len() as f32;
 
     // Calculate the variance of the velocity values
     for &cell in v.iter() {
         variance += (f(cell) - mean) * (f(cell) - mean);
     }
-    variance = variance / v.len() as f32;
+    variance /= v.len() as f32;
     let sigma = variance.sqrt();
 
     (mean, sigma)
@@ -43,7 +43,7 @@ fn calculate_median_sigma(
     g: fn(&RadarCell) -> f32,
 ) -> (f32, f32) {
     // Calculate mean and std deviation of kernel with respect to lambda power
-    let (mean, sigma) = calculate_mean_sigma(&kernel, f);
+    let (mean, sigma) = calculate_mean_sigma(kernel, f);
 
     // Only keep values which fall within 2 std deviations of mean
     let mut valid_cells: Vec<&RadarCell> = vec![];
@@ -93,8 +93,8 @@ pub fn median_filter(
     let filter_depth = (depth as usize).min(FILTER_DEPTH);
 
     // Find the largest beam number and range number in all the scans
-    for i in 0..filter_depth {
-        for beam in scans[i].beams.iter() {
+    for scan in scans.iter().take(filter_depth) {
+        for beam in scan.beams.iter() {
             if beam.beam >= max_beam {
                 max_beam = beam.beam + 1; // Add one since beam number is indexed from 0
             }
@@ -191,7 +191,7 @@ pub fn median_filter(
     if (mode / 4) % 2 == 1 {
         for beam_num in 0..max_beam as usize {
             // If center scan doesn't have beams then skip this beam
-            if beam_pointers[beam_num][depth as usize / 2].len() == 0 {
+            if beam_pointers[beam_num][depth as usize / 2].is_empty() {
                 continue;
             }
             let beam = &beam_pointers[beam_num][depth as usize / 2][0]; // First beam
@@ -235,7 +235,7 @@ pub fn median_filter(
         for z in 0..depth as usize {
             for beam_num in 0..max_beam as usize {
                 // If no beams previously found, continue
-                if beam_pointers[beam_num][z].len() == 0 {
+                if beam_pointers[beam_num][z].is_empty() {
                     continue;
                 }
 
@@ -313,16 +313,16 @@ pub fn median_filter(
             .ok_or_else(|| {
                 ProcdarnError::Timestamp("Could not average beam timestamps".to_string())
             })?;
-            out_beam.num_averages = out_beam.num_averages / count;
-            out_beam.first_range = out_beam.first_range / count;
-            out_beam.range_sep = out_beam.range_sep / count;
-            out_beam.rx_rise = out_beam.rx_rise / count;
-            out_beam.freq = out_beam.freq / count;
-            out_beam.noise = out_beam.noise / count;
-            out_beam.attenuation = out_beam.attenuation / count;
-            out_beam.integration_time_us = out_beam.integration_time_us / count;
+            out_beam.num_averages /= count;
+            out_beam.first_range /= count;
+            out_beam.range_sep /= count;
+            out_beam.rx_rise /= count;
+            out_beam.freq /= count;
+            out_beam.noise /= count;
+            out_beam.attenuation /= count;
+            out_beam.integration_time_us /= count;
             let mut microseconds = (out_beam.integration_time_s * 1_000_000) / count;
-            out_beam.integration_time_s = out_beam.integration_time_s / count;
+            out_beam.integration_time_s /= count;
             microseconds -= out_beam.integration_time_s * 1_000_000;
             out_beam.integration_time_us += microseconds;
         }
@@ -384,7 +384,7 @@ pub fn median_filter(
                 }
             }
             // If no cells with scatter found, continue
-            if kernel.len() == 0 {
+            if kernel.is_empty() {
                 continue;
             }
 
@@ -423,7 +423,7 @@ pub fn median_filter(
             // Perform lambda power median filtering if specified
             if (param / 2) % 2 == 1 {
                 // i.e. bitmap of (param & 0x02) is nonzero
-                if isort == true {
+                if isort {
                     compare_fn = |x| x.power_lin;
                 }
                 (out_cell.power_lin, out_cell.power_lin_error) =
@@ -433,7 +433,7 @@ pub fn median_filter(
             // Perform spectral width median filtering if specified
             if (param / 4) % 2 == 1 {
                 // i.e. bitmap of (param & 0x04) is nonzero
-                if isort == true {
+                if isort {
                     compare_fn = |x| x.spectral_width_lin;
                 }
                 (
@@ -445,7 +445,7 @@ pub fn median_filter(
             // Perform lag0 power median filtering if specified
             if (param / 8) % 2 == 1 {
                 // i.e. bitmap of (param & 0x08) is nonzero
-                if isort == true {
+                if isort {
                     compare_fn = |x| x.power_lag_zero;
                 }
                 (out_cell.power_lag_zero, out_cell.power_error_lag_zero) =
@@ -462,7 +462,7 @@ pub fn median_filter(
 /// scattering location for a range gate will also change, so median filtering the data is
 /// nonsensical.
 /// Called FilterCheckOps in checkops.c of RST.
-pub fn check_operational_params(scans: &Vec<RadarScan>, max_frequency_var: i32) -> bool {
+pub fn check_operational_params(scans: &[RadarScan], max_frequency_var: i32) -> bool {
     // Choose the middle scan of scans being median filtered
     let ref_scan = scans[scans.len() / 2].clone();
 

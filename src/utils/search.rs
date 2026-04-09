@@ -13,17 +13,17 @@ pub fn fit_seek(
     for rec in fitacf_records.iter() {
         let tstamp = NaiveDate::from_ymd_opt(
             i32::try_from(
-                rec.get(&"time.yr".to_string())
+                rec.get("time.yr")
                     .ok_or(ProcdarnError::MissingField("time.yr"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"time.mo".to_string())
+                rec.get("time.mo")
                     .ok_or(ProcdarnError::MissingField("time.mo"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"time.dy".to_string())
+                rec.get("time.dy")
                     .ok_or(ProcdarnError::MissingField("time.dy"))?
                     .clone(),
             )?,
@@ -31,17 +31,17 @@ pub fn fit_seek(
         .ok_or(ProcdarnError::Timestamp("could not parse date".to_string()))?
         .and_hms_opt(
             u32::try_from(
-                rec.get(&"time.hr".to_string())
+                rec.get("time.hr")
                     .ok_or(ProcdarnError::MissingField("time.hr"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"time.mt".to_string())
+                rec.get("time.mt")
                     .ok_or(ProcdarnError::MissingField("time.mt"))?
                     .clone(),
             )?,
             u32::try_from(
-                rec.get(&"time.sc".to_string())
+                rec.get("time.sc")
                     .ok_or(ProcdarnError::MissingField("time.sc"))?
                     .clone(),
             )?,

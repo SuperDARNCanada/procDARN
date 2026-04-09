@@ -31,22 +31,22 @@ pub fn slant_range(
 /// Called fldpnt_sph in invmag.c of RST
 fn fieldpoint_sphere(start: GeocentricCoords, look_dir: &LocalAngularCoords) -> GeocentricCoords {
     let c_side = PI / 2.0 - start.lat;
-    let a_angle: f64;
-    if look_dir.az > PI {
-        a_angle = look_dir.az - 2.0 * PI;
+
+    let a_angle = if look_dir.az > PI {
+        look_dir.az - 2.0 * PI
     } else {
-        a_angle = look_dir.az;
-    }
+        look_dir.az
+    };
 
     let b_side = look_dir.range / start.rad;
     let mut arg = b_side.cos() * c_side.cos() + b_side.sin() * c_side.sin() * a_angle.cos();
 
-    arg = arg.max(-1.0).min(1.0);
+    arg = arg.clamp(-1.0, 1.0);
 
     let a_side = arg.acos();
     arg = (b_side.cos() - a_side.cos() * c_side.cos()) / (a_side.sin() * c_side.sin());
 
-    arg = arg.max(-1.0).min(1.0);
+    arg = arg.clamp(-1.0, 1.0);
 
     let mut b_angle = arg.acos();
     if a_angle < 0.0 {
@@ -207,39 +207,38 @@ fn fieldpoint_height(
 
         // Need to calculate actual elevation angle for 1.5-hop propagation when using Chisham model
         // for coning angle correction
-        let xel: f64;
-        if chisham && range > 2137.5 {
+
+        let xel = if chisham && range > 2137.5 {
             let gamma = ((radar_geo.rad * radar_geo.rad + point_rho * point_rho - range * range)
                 / (2.0 * radar_geo.rad * point_rho))
                 .acos();
             let beta = (radar_geo.rad * (gamma / 3.0).sin() / (range / 3.0)).asin();
-            xel = PI / 2.0 - beta - (gamma / 3.0);
+            PI / 2.0 - beta - (gamma / 3.0)
         } else {
-            xel = angle_above_horizon;
-        }
+            angle_above_horizon
+        };
 
         look_dir.el = xel;
 
         // Estimate the off-array-normal azimuth
         let off_boresight_rad = bearing_off_boresight.to_radians();
         let boresight_bearing_rad = boresight_bearing.to_radians();
-        let tan_azimuth: f64;
-        if off_boresight_rad.cos() * off_boresight_rad.cos() - look_dir.el.sin() * look_dir.el.sin()
+        let tan_azimuth = if off_boresight_rad.cos() * off_boresight_rad.cos() - look_dir.el.sin() * look_dir.el.sin()
             < 0.0
         {
-            tan_azimuth = 1e32;
+            1e32
         } else {
-            tan_azimuth = (off_boresight_rad.sin() * off_boresight_rad.sin()
+            (off_boresight_rad.sin() * off_boresight_rad.sin()
                 / (off_boresight_rad.cos() * off_boresight_rad.cos()
                     - look_dir.el.sin() * look_dir.el.sin()))
-            .sqrt();
-        }
-        let azimuth: f64;
-        if off_boresight_rad > 0.0 {
-            azimuth = tan_azimuth.atan();
+            .sqrt()
+        };
+
+        let azimuth = if off_boresight_rad > 0.0 {
+            tan_azimuth.atan()
         } else {
-            azimuth = -tan_azimuth.atan();
-        }
+            -tan_azimuth.atan()
+        };
 
         // Pointing azimuth in radians east of north
         look_dir.az = azimuth + boresight_bearing_rad;
@@ -488,7 +487,7 @@ pub fn rpos_inv_mag(
     let virtual_height = cell_geoc.rad - cell_geod.rad;
 
     // Convert cell coordinates from geocentric to AACGM magnetic coordinates
-    let mut geoc_with_virtual_height = cell_geoc.clone();
+    let mut geoc_with_virtual_height = cell_geoc;
     geoc_with_virtual_height.rad = virtual_height;
     let mag_coords = geoc_with_virtual_height.aacgmv2_convert(aacgm_model);
 

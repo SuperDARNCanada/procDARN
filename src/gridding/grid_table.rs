@@ -109,13 +109,13 @@ impl GridTable {
     pub fn test(&mut self, scan: &RadarScan) -> bool {
         let time_micros =
             (scan.start_time.timestamp_micros() + scan.end_time.timestamp_micros()) / 2;
-        let time: DateTime<Utc>;
-        match DateTime::from_timestamp_micros(time_micros) {
+
+        let time: DateTime<Utc> = match DateTime::from_timestamp_micros(time_micros) {
             Some(x) => {
-                time = x;
+                x
             }
             None => return false,
-        }
+        };
 
         if self.start_time == DateTime::<Utc>::default() {
             return false;
@@ -135,7 +135,7 @@ impl GridTable {
 
         for point in self.points.iter_mut() {
             if point.count != 0 {
-                if point.count <= &self.num_scans * &point.max / 4 {
+                if point.count <= self.num_scans * point.max / 4 {
                     point.count = 0;
                 } else {
                     // Update the total number of grid points in the grid table
@@ -146,19 +146,19 @@ impl GridTable {
                     point.velocity_median_east /= &point.velocity_stddev;
 
                     // Calculate the magnitude of weighted mean velocity error
-                    point.velocity_median = (&point.velocity_median_north
-                        * &point.velocity_median_north
-                        + &point.velocity_median_east * &point.velocity_median_east)
+                    point.velocity_median = (point.velocity_median_north
+                        * point.velocity_median_north
+                        + point.velocity_median_east * point.velocity_median_east)
                         .sqrt();
 
                     // Calculate azimuth of weighted mean velocity vector
                     point.azimuth = point
                         .velocity_median_east
-                        .atan2(point.velocity_median_north.clone())
+                        .atan2(point.velocity_median_north)
                         .to_degrees();
 
                     // Calculate average slant range of velocity vector
-                    point.slant_range = point.slant_range / point.count as f32;
+                    point.slant_range /= point.count as f32;
 
                     // Calculate weighted mean of spectral width and power
                     point.spectral_width_median /= &point.spectral_width_stddev;
@@ -252,12 +252,11 @@ impl GridTable {
             }
 
             // Calculate magnetic grid cell latitude, (e.g. 72.1->72.5, 57.8->57.5, etc)
-            let grid_lat: f32;
-            if mag_loc.lat > 0.0 {
-                grid_lat = mag_loc.lat.to_degrees().floor() as f32 + 0.5;
+            let grid_lat = if mag_loc.lat > 0.0 {
+                mag_loc.lat.to_degrees().floor() as f32 + 0.5
             } else {
-                grid_lat = mag_loc.lat.to_degrees().floor() as f32 - 0.5;
-            }
+                mag_loc.lat.to_degrees().floor() as f32 - 0.5
+            };
 
             // Calculate magnetic grid longitude spacing at grid latitude
             let lon_spacing = (360.0 * grid_lat.abs().to_radians().cos() + 0.5).floor() / 360.0;
@@ -267,16 +266,15 @@ impl GridTable {
                 ((mag_loc.lon.to_degrees() as f32 * lon_spacing).floor() + 0.5) / lon_spacing;
 
             // Calculate reference number for cell
-            let reference: i32;
-            if mag_loc.lat > 0.0 {
-                reference = (1000.0 * mag_loc.lat.to_degrees().floor() as f32
+            let reference = if mag_loc.lat > 0.0 {
+                (1000.0 * mag_loc.lat.to_degrees().floor() as f32
                     + (mag_loc.lon.to_degrees() as f32 * lon_spacing).floor())
-                    as i32;
+                    as i32
             } else {
-                reference = (-1000.0 * (-1.0 * mag_loc.lat.to_degrees()).floor() as f32
+                (-1000.0 * (-mag_loc.lat.to_degrees()).floor() as f32
                     - (mag_loc.lon.to_degrees() as f32 * lon_spacing).floor())
-                    as i32;
-            }
+                    as i32
+            };
 
             // Find GridPoint corresponding to reference number for cell, make new GridPoint if none found
             let index = match self.find_point(reference) {
@@ -343,9 +341,9 @@ impl GridTable {
             self.freq = 0.0;
             self.num_scans = 0;
             self.clear();
-            self.start_time = scan.start_time.clone();
-            self.end_time = scan.start_time.clone() + TimeDelta::seconds(tlen as i64);
-            self.station_id = scan.station_id.clone();
+            self.start_time = scan.start_time;
+            self.end_time = scan.start_time + TimeDelta::seconds(tlen as i64);
+            self.station_id = scan.station_id;
         }
 
         for scan_beam in scan.beams.iter() {
@@ -358,7 +356,7 @@ impl GridTable {
             };
             let grid_beam = &self.beams[beam_index];
 
-            for range in 0..scan_beam.num_ranges.clone() as usize {
+            for range in 0..scan_beam.num_ranges as usize {
                 if scan_beam.scatter[range] == 0 {
                     continue;
                 }
@@ -426,8 +424,8 @@ impl GridTable {
         }
 
         // Average frequency and noise over all beams in scan
-        freq = freq / count as f32;
-        noise = noise / count;
+        freq /= count as f32;
+        noise /= count;
 
         for scan_beam in scan.beams.iter().filter(|beam| beam.beam != -1) {
             variance += (scan_beam.noise as f64 - noise) * (scan_beam.noise as f64 - noise);

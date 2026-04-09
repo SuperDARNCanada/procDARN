@@ -69,7 +69,7 @@ impl RadarScan {
 
     /// Remove beams whose beam number is in beam_list
     /// Called RadarScanResetBeam in RST
-    pub fn reset_beams(&mut self, beam_list: &Vec<i32>) -> Result<(), GridError> {
+    pub fn reset_beams(&mut self, beam_list: &[i32]) -> Result<(), GridError> {
         // remove beams from self.beams that are in beam_list
         self.beams = self
             .beams
@@ -109,26 +109,26 @@ impl RadarScan {
         fit_records: &[FitacfRecord],
         scan_length: Option<u32>,
     ) -> Result<(RadarScan, usize), ProcdarnError> {
-        if fit_records.len() == 0 {
+        if fit_records.is_empty() {
             return Err(ProcdarnError::ZeroRecords("in `get_first_scan()`"));
         }
         let mut rec = &fit_records[0];
         let start_time = get_datetime(rec)?;
         let mut scan: RadarScan = RadarScan {
             station_id: i16::try_from(
-                rec.get(&"stid".to_string())
+                rec.get("stid")
                     .ok_or(ProcdarnError::MissingField("stid"))?
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("stid"))?,
             version_major: i32::try_from(
-                rec.get(&"radar.revision.major".to_string())
+                rec.get("radar.revision.major")
                     .ok_or(ProcdarnError::MissingField("radar.revision.major"))?
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("radar.revision.major"))?,
             version_minor: i32::try_from(
-                rec.get(&"radar.revision.minor".to_string())
+                rec.get("radar.revision.minor")
                     .ok_or(ProcdarnError::MissingField("radar.revision.minor"))?
                     .clone(),
             )
@@ -151,149 +151,149 @@ impl RadarScan {
             let mut beam = RadarBeam {
                 time: get_datetime(rec)?,
                 scan: i32::try_from(
-                    rec.get(&"scan".to_string())
+                    rec.get("scan")
                         .ok_or(ProcdarnError::MissingField("scan"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("scan"))?,
                 beam: i32::try_from(
-                    rec.get(&"bmnum".to_string())
+                    rec.get("bmnum")
                         .ok_or(ProcdarnError::MissingField("bmnum"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("bmnum"))?,
                 beam_azimuth: f32::try_from(
-                    rec.get(&"bmazm".to_string())
+                    rec.get("bmazm")
                         .ok_or(ProcdarnError::MissingField("bmazm"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("bmazm"))?,
                 program_id: i32::try_from(
-                    rec.get(&"cp".to_string())
+                    rec.get("cp")
                         .ok_or(ProcdarnError::MissingField("cp"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("cp"))?,
                 integration_time_s: i32::try_from(
-                    rec.get(&"intt.sc".to_string())
+                    rec.get("intt.sc")
                         .ok_or(ProcdarnError::MissingField("intt.sc"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("intt.sc"))?,
                 integration_time_us: i32::try_from(
-                    rec.get(&"intt.us".to_string())
+                    rec.get("intt.us")
                         .ok_or(ProcdarnError::MissingField("intt.us"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("intt.us"))?,
                 num_averages: i32::try_from(
-                    rec.get(&"nave".to_string())
+                    rec.get("nave")
                         .ok_or(ProcdarnError::MissingField("nave"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("nave"))?,
                 first_range: i32::try_from(
-                    rec.get(&"frang".to_string())
+                    rec.get("frang")
                         .ok_or(ProcdarnError::MissingField("frang"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("frang"))?,
                 range_sep: i32::try_from(
-                    rec.get(&"rsep".to_string())
+                    rec.get("rsep")
                         .ok_or(ProcdarnError::MissingField("rsep"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("rsep"))?,
                 rx_rise: i32::try_from(
-                    rec.get(&"rxrise".to_string())
+                    rec.get("rxrise")
                         .ok_or(ProcdarnError::MissingField("rxrise"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("rxrise"))?,
                 freq: i32::try_from(
-                    rec.get(&"tfreq".to_string())
+                    rec.get("tfreq")
                         .ok_or(ProcdarnError::MissingField("tfreq"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("tfreq"))?,
                 noise: f32::try_from(
-                    rec.get(&"noise.sky".to_string())
+                    rec.get("noise.sky")
                         .ok_or(ProcdarnError::MissingField("noise.sky"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("noise.sky"))?
                     .floor() as i32,
                 attenuation: i32::try_from(
-                    rec.get(&"atten".to_string())
+                    rec.get("atten")
                         .ok_or(ProcdarnError::MissingField("atten"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("atten"))?,
                 channel: i32::try_from(
-                    rec.get(&"channel".to_string())
+                    rec.get("channel")
                         .ok_or(ProcdarnError::MissingField("channel"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("channel"))?,
                 num_ranges: i32::try_from(
-                    rec.get(&"nrang".to_string())
+                    rec.get("nrang")
                         .ok_or(ProcdarnError::MissingField("nrang"))?
                         .clone(),
                 )
                 .map_err(|_| ProcdarnError::WrongType("nrang"))?,
                 ..Default::default()
             };
-            let groundscatter = match rec.get(&"gflg".to_string()) {
+            let groundscatter = match rec.get("gflg") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("gflg"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
             let power_lag_zero = ArrayD::try_from(
-                rec.get(&"pwr0".to_string())
+                rec.get("pwr0")
                     .ok_or(ProcdarnError::MissingField("pwr0"))?
                     .clone(),
             )
             .map_err(|_| ProcdarnError::WrongType("pwr0"))?;
             let power_error_lag_zero = 0.0;
-            let velocity = match rec.get(&"v".to_string()) {
+            let velocity = match rec.get("v") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("v"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let power_lin = match rec.get(&"p_l".to_string()) {
+            let power_lin = match rec.get("p_l") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("p_l"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let spectral_width_lin = match rec.get(&"w_l".to_string()) {
+            let spectral_width_lin = match rec.get("w_l") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("w_l"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let velocity_error = match rec.get(&"v_e".to_string()) {
+            let velocity_error = match rec.get("v_e") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("v_e"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let quality_flag: ArrayD<i8> = match rec.get(&"qflg".to_string()) {
+            let quality_flag: ArrayD<i8> = match rec.get("qflg") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("qflg"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let slist = match rec.get(&"slist".to_string()) {
+            let slist = match rec.get("slist") {
                 Some(x) => {
                     ArrayD::try_from(x.clone()).map_err(|_| ProcdarnError::WrongType("slist"))?
                 }
                 None => Array::zeros((0,)).into_dyn(),
             };
-            let lag_zero_phi = rec.get(&"phi0".to_string());
-            let elevation = rec.get(&"elv".to_string());
+            let lag_zero_phi = rec.get("phi0");
+            let elevation = rec.get("elv");
             for r in 0..beam.num_ranges as usize {
                 let slist_idx = slist.iter().position(|&x: &i16| x as usize == r);
                 let cell = match slist_idx {
@@ -303,7 +303,7 @@ impl RadarScan {
                         let mut cell_tmp = RadarCell {
                             groundscatter: groundscatter[idx],
                             power_lag_zero: power_lag_zero[idx],
-                            power_error_lag_zero: power_error_lag_zero.clone(),
+                            power_error_lag_zero,
                             velocity: velocity[idx],
                             power_lin: power_lin[idx],
                             spectral_width_lin: spectral_width_lin[idx],
@@ -352,7 +352,7 @@ impl RadarScan {
                     if i < fit_records.len()
                         && i8::try_from(
                             fit_records[i]
-                                .get(&"scan".to_string())
+                                .get("scan")
                                 .ok_or(ProcdarnError::MissingField("scan"))?
                                 .clone(),
                         )

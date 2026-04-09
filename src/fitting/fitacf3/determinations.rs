@@ -593,11 +593,11 @@ fn calculate_elevation_v2(
             .to_degrees() as f32
     };
 
-    let psi_normal: Vec<f64> = xcf_phi0.iter().map(|p| psi_calc(p)).collect();
-    let e_normal: Vec<f64> = psi_normal.iter().map(|psi| e_calc(psi)).collect();
+    let psi_normal: Vec<f64> = xcf_phi0.iter().map(psi_calc).collect();
+    let e_normal: Vec<f64> = psi_normal.iter().map(e_calc).collect();
     let elv_normal = e_normal // called alpha in RST
         .iter()
-        .map(|e| elv_calc(e))
+        .map(elv_calc)
         .collect();
 
     let psi_fitted: Vec<f64> = ranges
@@ -612,8 +612,8 @@ fn calculate_elevation_v2(
             psi_calc(&p)
         })
         .collect();
-    let e_fitted: Vec<f64> = psi_fitted.iter().map(|psi| e_calc(psi)).collect();
-    let elv_fitted = e_fitted.iter().map(|e| elv_calc(e)).collect();
+    let e_fitted: Vec<f64> = psi_fitted.iter().map(e_calc).collect();
+    let elv_fitted = e_fitted.iter().map(elv_calc).collect();
 
     (elv_normal, elv_fitted)
 }

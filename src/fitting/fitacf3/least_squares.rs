@@ -36,8 +36,8 @@ impl LeastSquares {
         fitted.slope = (sums.sum * sums.sum_xy - sums.sum_x * sums.sum_y) / fitted.delta;
         fitted.variance_intercept = sums.sum_xx / fitted.delta;
         fitted.variance_slope = sums.sum / fitted.delta;
-        fitted.covariance_intercept_slope = (-1.0 * sums.sum_x) / fitted.delta;
-        fitted.residual_intercept_slope = (-1.0 * sums.sum_x) / (sums.sum * sums.sum_xx).sqrt();
+        fitted.covariance_intercept_slope = -sums.sum_x / fitted.delta;
+        fitted.residual_intercept_slope = -sums.sum_x / (sums.sum * sums.sum_xx).sqrt();
 
         let delta_chi_2 = self.delta_chi_2[self.confidence][self.degrees_of_freedom];
         fitted.delta_intercept = delta_chi_2.sqrt() * fitted.variance_intercept.sqrt();

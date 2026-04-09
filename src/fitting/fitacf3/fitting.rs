@@ -95,7 +95,7 @@ pub(crate) fn calculate_phase_and_elev_sigmas(
             .phases
             .t
             .iter()
-            .map(|t| (-1.0 * range.lin_pwr_fit.as_ref().unwrap().slope.abs() * t).exp())
+            .map(|t| (-range.lin_pwr_fit.as_ref().unwrap().slope.abs() * t).exp())
             .collect();
         let inverse_pwr_squared: Vec<f64> = pwr_values.iter().map(|x| 1.0 / (x * x)).collect();
         let phase_numerator: Vec<f64> = zip(inverse_alpha_2.iter(), inverse_pwr_squared.iter())
@@ -239,6 +239,6 @@ fn phase_correction(slope_estimate: f64, phases: &[f64], times: &[f64]) -> (Vec<
         .iter()
         .map(|x| x.abs())
         .max()
-        .map_or_else(|| 0, |x| x);
+        .unwrap_or(0);
     (corrected_phase, total_corrections)
 }

@@ -268,12 +268,12 @@ pub struct GridArgs {
 pub fn fit2grid_file(infiles: &[PathBuf], args: &GridArgs) -> Result<Vec<GridRecord>, GridError> {
     let mut grid_recs: Vec<GridRecord> = vec![];
     
-    for infile in infiles.into_iter() {
+    for infile in infiles.iter() {
         if args.verbose {
             println!("\nGridding file {}", infile.display())
         };
         let fitacf_records = FitacfRecord::read_file(infile.clone())?;
-        let mut grids = fit2grid(&args, &fitacf_records)?;
+        let mut grids = fit2grid(args, &fitacf_records)?;
         grid_recs.append(&mut grids);
     }
 
@@ -292,11 +292,11 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
 
     // Set GridTable groundscatter flag
     grid_table.groundscatter = {
-        if args.groundscatter_only_flag == true {
+        if args.groundscatter_only_flag {
             0
-        } else if args.ionosphere_only_flag == true {
+        } else if args.ionosphere_only_flag {
             1
-        } else if args.all_data_flag == true {
+        } else if args.all_data_flag {
             2
         } else {
             return Err(GridError::BadArgs(
@@ -329,12 +329,8 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
     }
 
     // Initialize the size of the boxcar. Default 3 if median filtering being applied, 1 otherwise
-    let num_averages: i32;
-    if args.boxcar_filter_flag {
-        num_averages = 3;
-    } else {
-        num_averages = 1;
-    }
+    let num_averages = if args.boxcar_filter_flag { 3 } else { 1 };
+
     // Preallocate memory for a vector of records that will be boxcar filtered
     let mut current_scans: Vec<RadarScan> = Vec::with_capacity(num_averages as usize);
     for _ in 0..num_averages {
@@ -350,7 +346,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
     let mut found_scan: bool;
 
     // Get the first scan from the file
-    match RadarScan::get_first_scan(&fitacf_records, args.scan_length) {
+    match RadarScan::get_first_scan(fitacf_records, args.scan_length) {
         Ok((x, num_read)) => {
             current_scans[index] = x;
             found_scan = true;
@@ -376,7 +372,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             };
 
             let time_string = match &args.start_time {
-                Some(t) => format!("{}", t),
+                Some(t) => t.clone(),
                 // The None branch truncates back to the start of the minute
                 None => current_scans[0].start_time.format("%H:%M").to_string(),
             };
@@ -414,7 +410,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             }
 
             // Find the first record which occurs after the grid start time, if any
-            if let Ok(Some((_, idx))) = fit_seek(&fitacf_records, start_time) {
+            if let Ok(Some((_, idx))) = fit_seek(fitacf_records, start_time) {
                 record_idx = Some(idx);
             } else {
                 return Err(GridError::InvalidFitacf("Records end before requested start time".to_string()))
@@ -422,31 +418,25 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             found_record = true;
 
             // If using scan flag, go to the next beginning of the next scan
-            if let None = args.scan_length {
+            if args.scan_length.is_none() {
                 if let Some(x) = record_idx {
                     let mut scan_flags: Vec<i16> = vec![];
                     for rec in fitacf_records[x..].iter() {
                         let scn_flg = i16::try_from(
-                            rec.get(&"scan".to_string())
+                            rec.get("scan")
                                 .ok_or_else(|| {
-                                    GridError::InvalidFitacf(format!(
-                                        "missing `scan` flag"
-                                    ))
+                                    GridError::InvalidFitacf("missing `scan` flag".to_string())
                                 })?
                                 .clone(),
                         )
                         .map_err(|_| {
-                            GridError::InvalidFitacf(format!(
-                                "bad `scan` flag",
-                            ))
+                            GridError::InvalidFitacf("bad `scan` flag".to_string())
                         })?;
                         scan_flags.push(scn_flg);
                     }
                     record_idx = Some(
                         scan_flags.iter().position(|&flg| flg == 1).ok_or_else(|| {
-                            GridError::InvalidFitacf(format!(
-                                "No records with set `scan` flag"
-                            ))
+                            GridError::InvalidFitacf("No records with set `scan` flag".to_string())
                         })? + x,
                     );
                 } else {
@@ -457,7 +447,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             }
 
             // Read the first full scan of data corresponding to grid start datetime
-            let first_idx = record_idx.unwrap_or_else(|| 0);
+            let first_idx = record_idx.unwrap_or(0);
             if args.verbose {
                 println!("Gridding starting at record {first_idx}");
             }
@@ -487,9 +477,9 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
         } else {
             end_time = match &args.end_time {
                 Some(t) => {
-                    let time_string = format!("{}", t);
+                    let time_string = t.clone();
                     let date_string = match &args.end_date {
-                        Some(d) => format!("{}", d),
+                        Some(d) => d.clone(),
                         None => current_scans[0].start_time.format("%Y%m%d").to_string(),
                     };
                     NaiveDateTime::parse_from_str(
@@ -520,7 +510,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
     }
 
     let date = NaiveDate::from_ymd_opt(start_time.year(), start_time.month(), start_time.day()).unwrap().and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let mut aacgm_model = Aacgmv2::new(date).map_err(|e| GridError::Aacgmv2(e))?;
+    let mut aacgm_model = Aacgmv2::new(date).map_err(GridError::Aacgmv2)?;
     num_scans += 1;
 
     // Grid all data until end of gridding time or end of file
@@ -629,7 +619,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
             // Map GridTable to equal-area grid in magnetic coordinates
             grid_table.map(
                 &grid_record,
-                &hdw_params,
+                hdw_params,
                 &mut aacgm_model,
                 args.record_interval as i32,
                 args.inertial_frame_flag,
@@ -645,7 +635,7 @@ pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<
         }
 
         // Get the next scan
-        let start_idx = record_idx.unwrap_or_else(|| 0);
+        let start_idx = record_idx.unwrap_or(0);
         let scan_res =
             RadarScan::get_first_scan(&fitacf_records[start_idx..], args.scan_length);
         match scan_res {

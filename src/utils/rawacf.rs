@@ -75,16 +75,16 @@ impl TryFrom<&RawacfRecord> for Rawacf {
     fn try_from(value: &RawacfRecord) -> Result<Self, Self::Error> {
         let scalar_getter = |key: &str| -> Result<&DmapField, DmapError> {
             value
-                .get(&key.to_string())
+                .get(key)
                 .ok_or_else(|| DmapError::InvalidScalar(key.to_string()))
         };
-        let opt_scalar_getter = |key: &str| -> Option<&DmapField> { value.get(&key.to_string()) };
+        let opt_scalar_getter = |key: &str| -> Option<&DmapField> { value.get(key) };
         let vector_getter = |key: &str| -> Result<&DmapField, DmapError> {
             value
-                .get(&key.to_string())
+                .get(key)
                 .ok_or_else(|| DmapError::InvalidVector(key.to_string()))
         };
-        let opt_vector_getter = |key: &str| -> Option<&DmapField> { value.get(&key.to_string()) };
+        let opt_vector_getter = |key: &str| -> Option<&DmapField> { value.get(key) };
         Ok(Rawacf {
             radar_revision_major: scalar_getter("radar.revision.major")?.clone().try_into()?,
             radar_revision_minor: scalar_getter("radar.revision.minor")?.clone().try_into()?,
@@ -182,15 +182,15 @@ impl TryFrom<&RawacfRecord> for Rawacf {
 
 pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(DateTime<Utc>, i16), DmapError> {
     let rec_date: NaiveDate = NaiveDate::from_ymd_opt(
-        rec.get(&"time.yr".to_string())
+        rec.get("time.yr")
             .ok_or_else(|| DmapError::InvalidScalar("Missing time.yr".to_string()))?
             .clone()
             .try_into()?,
-        rec.get(&"time.mo".to_string())
+        rec.get("time.mo")
             .ok_or_else(|| DmapError::InvalidScalar("Missing time.mo".to_string()))?
             .clone()
             .try_into()?,
-        rec.get(&"time.dy".to_string())
+        rec.get("time.dy")
             .ok_or_else(|| DmapError::InvalidScalar("Missing time.dy".to_string()))?
             .clone()
             .try_into()?,
@@ -198,15 +198,15 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(DateTime<Utc>, i1
     .ok_or_else(|| DmapError::InvalidRecord("Unable to parse date".to_string()))?;
     let rec_datetime = rec_date
         .and_hms_opt(
-            rec.get(&"time.hr".to_string())
+            rec.get("time.hr")
                 .ok_or_else(|| DmapError::InvalidScalar("Missing time.hr".to_string()))?
                 .clone()
                 .try_into()?,
-            rec.get(&"time.mt".to_string())
+            rec.get("time.mt")
                 .ok_or_else(|| DmapError::InvalidScalar("Missing time.mt".to_string()))?
                 .clone()
                 .try_into()?,
-            rec.get(&"time.sc".to_string())
+            rec.get("time.sc")
                 .ok_or_else(|| DmapError::InvalidScalar("Missing time.sc".to_string()))?
                 .clone()
                 .try_into()?,
@@ -215,7 +215,7 @@ pub(crate) fn get_datetime_stid(rec: &RawacfRecord) -> Result<(DateTime<Utc>, i1
         .and_utc();
 
     let station_id: i16 = rec
-        .get(&"stid".to_string())
+        .get("stid")
         .ok_or_else(|| DmapError::InvalidScalar("Missing stid".to_string()))?
         .clone()
         .try_into()?;

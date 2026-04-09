@@ -1,13 +1,12 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use dmap;
+use dmap::{RawacfRecord, Record};
 use procdarn::fitting::fitacf3::fitacf_v3::{fitacf3, par_fitacf3};
 
 const TEST_FILE: &str = "tests/test_files/large.rawacf";
 // const TEST_FILE: &str = "/data/dmap_files/20221107.2200.00.rkn.a.rawacf"; // widebeam file
-const OUTPUT_FILE: &str = "/dev/null";
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let rawacf = dmap::read_rawacf(TEST_FILE.to_string().into()).expect("Could not read records");
+    let rawacf = RawacfRecord::read_file(TEST_FILE.to_string()).expect("Could not read records");
 
     c.bench_function("Fitacf3", |b| {
         b.iter_batched(
