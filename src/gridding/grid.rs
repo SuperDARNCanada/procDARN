@@ -1,3 +1,4 @@
+//! Objects and functions for [`fit2grid`] functionality.
 use aacgmv2_rs::aacgmv2::Aacgmv2;
 use crate::error::ProcdarnError;
 use crate::gridding::filter::{check_operational_params, median_filter};
@@ -62,6 +63,7 @@ impl From<GridError> for PyErr {
     }
 }
 
+/// Arguments for [`fit2grid`] customization.
 #[derive(Parser, Debug, FromPyObject)]
 #[command(author, version, about, long_about = None)]
 pub struct GridArgs {
@@ -281,6 +283,9 @@ pub fn fit2grid_file(infiles: &[PathBuf], args: &GridArgs) -> Result<Vec<GridRec
 }
 
 /// Takes a list of fitacf records and converts them into grid records.
+///
+/// This algorithm has many different options to tweak the behaviour. See [`GridArgs`] for more
+/// information.
 pub fn fit2grid(args: &GridArgs, fitacf_records: &[FitacfRecord]) -> Result<Vec<GridRecord>, GridError> {
     let mut grid_table = GridTable::default();
 

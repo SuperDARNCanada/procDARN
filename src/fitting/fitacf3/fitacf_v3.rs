@@ -1,4 +1,4 @@
-//! Error type for Fitacfv3 algorithm
+//! Top-level objects and functions for the FITACF3 fitting method.
 use crate::error::ProcdarnError;
 use crate::fitting::fitacf3::determinations::determinations;
 use crate::fitting::fitacf3::filtering;
@@ -16,12 +16,12 @@ use thiserror::Error;
 
 type Result<T> = std::result::Result<T, Fitacf3Error>;
 
-pub const FLUCTUATION_CUTOFF_COEFFICIENT: f32 = 2.0;
-pub const ALPHA_CUTOFF: f32 = 2.0;
-pub const ACF_SNR_CUTOFF: f64 = 1.0;
-pub const MIN_LAGS: i16 = 3;
+pub(crate) const FLUCTUATION_CUTOFF_COEFFICIENT: f32 = 2.0;
+pub(crate) const ALPHA_CUTOFF: f32 = 2.0;
+pub(crate) const ACF_SNR_CUTOFF: f64 = 1.0;
+pub(crate) const MIN_LAGS: i16 = 3;
 
-/// Enum of the possible error variants that may be encountered
+/// Enum of the possible error variants that may be encountered.
 #[derive(Error, Debug)]
 pub enum Fitacf3Error {
     /// Represents an error in the Rawacf record that is attempting to be fitted
@@ -88,12 +88,12 @@ fn fit_rawacf_record(record: &RawacfRecord, hdw: &HdwInfo) -> Result<FitacfRecor
     determinations(&raw, &range_list, noise_power, hdw)
 }
 
-/// Fits a collection of `RawacfRecord`s into `FitacfRecord`s.
+/// Fits a collection of [`RawacfRecord`]s into [`FitacfRecord`]s using the FITACF3 algorithm without parallelization.
 ///
 /// # Errors
-/// Will return `Err` if the `RawacfRecord`s do not have all required fields for fitting,
-/// or if the data within the `RawacfRecord`s are unsuitable for fitting for any reason.
-pub fn fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
+/// Will return `Err` if the [`RawacfRecord`]s do not have all required fields for fitting,
+/// or if the data within the [`RawacfRecord`]s are unsuitable for fitting for any reason.
+pub fn fitacf3_single_threaded(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
     let hdw = get_hdw(&raw_recs[0])?;
 
     let mut fitacf_records = vec![];
@@ -103,12 +103,12 @@ pub fn fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
     Ok(fitacf_records)
 }
 
-/// Fits a collection of `RawacfRecord`s into `FitacfRecord`s in parallel.
+/// Fits a collection of [`RawacfRecord`]s into [`FitacfRecord`]s using the FITACF3 algorithm.
 ///
 /// # Errors
-/// Will return `Err` if the `RawacfRecord`s do not have all required fields for fitting,
-/// or if the data within the `RawacfRecord`s are unsuitable for fitting for any reason.
-pub fn par_fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
+/// Will return `Err` if the [`RawacfRecord`]s do not have all required fields for fitting,
+/// or if the data within the [`RawacfRecord`]s are unsuitable for fitting for any reason.
+pub fn fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
     let hdw = get_hdw(&raw_recs[0])?;
 
     // Fit the records!

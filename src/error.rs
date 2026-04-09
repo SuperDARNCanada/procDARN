@@ -1,7 +1,9 @@
+//! Error type for `procdarn`.
 use crate::utils::hdw::HdwError;
 use dmap::error::DmapError;
 use thiserror::Error;
 
+/// Top-level error object for all processing functions.
 #[derive(Error, Debug)]
 pub enum ProcdarnError {
     /// Represents a bad DMAP record

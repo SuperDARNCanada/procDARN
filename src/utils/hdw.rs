@@ -11,17 +11,18 @@ struct Hdw;
 pub enum HdwError {
     /// Represents a file that does not follow the hdw file format
     #[error("{0}")]
-    InvalidFile(String),
+    File(String),
 
     /// Represents trying to use a datetime that isn't covered by the hdw file
     #[error("{0}")]
-    InvalidDatetime(String),
+    Datetime(String),
 
     /// Represents trying to find the hdw file for a non-existent radar
     #[error("{0}")]
-    InvalidStation(i16),
+    Station(i16),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct HdwInfo {
     pub station_id: i16,           // stid in RST
@@ -98,15 +99,15 @@ impl HdwInfo {
             18 => "unw",
             32 => "wal",
             19 => "zho",
-            x => Err(HdwError::InvalidStation(x))?,
+            x => Err(HdwError::Station(x))?,
         };
         let hdw_file = Hdw::get(format!("hdw.dat.{site_name}").as_str())
-            .ok_or_else(|| HdwError::InvalidFile(format!("No file named hdw.dat.{site_name}")))?;
+            .ok_or_else(|| HdwError::File(format!("No file named hdw.dat.{site_name}")))?;
         let mut hdw_params: Vec<HdwInfo> = vec![];
         let reader = BufReader::new(hdw_file.data.as_ref()).lines();
         for line in reader {
             let line = line.map_err(|_| {
-                HdwError::InvalidFile("Unable to read line from hdw file".to_string())
+                HdwError::File("Unable to read line from hdw file".to_string())
             })?;
             if !line.starts_with('#') {
                 let elements: Vec<&str> = line.split_whitespace().collect();
@@ -117,7 +118,7 @@ impl HdwInfo {
                     "%Y%m%d %H:%M:%S",
                 )
                 .map_err(|_| {
-                    HdwError::InvalidFile("Unable to parse timeframe from hdw file".to_string())
+                    HdwError::File("Unable to parse timeframe from hdw file".to_string())
                 })?
                 .and_utc();
 
@@ -126,82 +127,82 @@ impl HdwInfo {
                 }
                 hdw_params.push(HdwInfo {
                     station_id: elements[0].parse::<i16>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read station id from hdw file".to_string())
+                        HdwError::File("Unable to read station id from hdw file".to_string())
                     })?,
                     valid_from: validity_date,
                     latitude: elements[4].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read latitude from hdw file".to_string())
+                        HdwError::File("Unable to read latitude from hdw file".to_string())
                     })?,
                     longitude: elements[5].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read longitude from hdw file".to_string())
+                        HdwError::File("Unable to read longitude from hdw file".to_string())
                     })?,
                     altitude: elements[6].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read altitude from hdw file".to_string())
+                        HdwError::File("Unable to read altitude from hdw file".to_string())
                     })?,
                     boresight: elements[7].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read boresight from hdw file".to_string())
+                        HdwError::File("Unable to read boresight from hdw file".to_string())
                     })?,
                     boresight_shift: elements[8].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read boresightshift from hdw file".to_string(),
                         )
                     })?,
                     beam_separation: elements[9].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read beam separation from hdw file".to_string(),
                         )
                     })?,
                     velocity_sign: elements[10].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read velocity sign from hdw file".to_string(),
                         )
                     })?,
                     phase_sign: elements[11].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read phase sign from hdw file".to_string())
+                        HdwError::File("Unable to read phase sign from hdw file".to_string())
                     })?,
                     tdiff_a: elements[12].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read tdiff A from hdw file".to_string())
+                        HdwError::File("Unable to read tdiff A from hdw file".to_string())
                     })?,
                     tdiff_b: elements[13].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile("Unable to read tdiff B from hdw file".to_string())
+                        HdwError::File("Unable to read tdiff B from hdw file".to_string())
                     })?,
                     intf_offset_x: elements[14].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read intf offset X from hdw file".to_string(),
                         )
                     })?,
                     intf_offset_y: elements[15].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read intf offset Y from hdw file".to_string(),
                         )
                     })?,
                     intf_offset_z: elements[16].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read intf offset Z from hdw file".to_string(),
                         )
                     })?,
                     rx_rise_time: elements[17].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read rx rise time from hdw file".to_string(),
                         )
                     })?,
                     rx_atten_step: elements[18].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read rx attenuation from hdw file".to_string(),
                         )
                     })?,
                     attenuation_stages: elements[19].parse::<f32>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read attenuation stages from hdw file".to_string(),
                         )
                     })?,
                     max_num_ranges: elements[20].parse::<i16>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read max number of ranges from hdw file".to_string(),
                         )
                     })?,
                     max_num_beams: elements[21].parse::<i16>().map_err(|_| {
-                        HdwError::InvalidFile(
+                        HdwError::File(
                             "Unable to read max number of beams from hdw file".to_string(),
                         )
                     })?,
@@ -209,7 +210,7 @@ impl HdwInfo {
             }
         }
         hdw_params.pop().ok_or_else(|| {
-            HdwError::InvalidDatetime("No valid lines found in hdw file".to_string())
+            HdwError::Datetime("No valid lines found in hdw file".to_string())
         })
     }
 }

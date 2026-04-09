@@ -1,7 +1,9 @@
+//! Filtering kernel functionality for gridding.
 use crate::error::ProcdarnError;
 use crate::utils::scan::{RadarBeam, RadarCell, RadarScan};
 use chrono::{DateTime, TimeDelta, Utc};
 
+#[allow(dead_code)]
 pub const MAX_BEAM: i32 = 256;
 pub const FILTER_HEIGHT: usize = 3;
 pub const FILTER_WIDTH: usize = 3;
@@ -67,15 +69,15 @@ fn calculate_median_sigma(
     (median, sigma)
 }
 
-/// Performs median filtering on a sequence of RadarScans.
+/// Performs median filtering on a collection of [`RadarScan`].
 ///
-/// The filter operates on each range/beam cell, with a 3x3x3 weighted kernel of range/beam/time.
+/// The filter operates on each range/beam cell, with a 3x3x3 kernel of range/beam/time.
 /// If the weighted sum of valid cells in the kernel exceeds a threshold, the median value of each
 /// parameter (velocity, power, and spectral width) is determined from the kernel. Otherwise, the
 /// output cell is considered empty. The associated parameter errors are calculated from the
 /// standard deviations of the input parameters.
 ///
-/// Called FilterRadarScan in filter.c of RST.
+/// Called `FilterRadarScan` in `filter.c` of RST.
 pub fn median_filter(
     mode: i32,
     depth: u32,

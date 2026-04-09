@@ -21,12 +21,13 @@ impl GeocentricCoords {
     }
 
     /// Constructor with input `lat`, `lon` in degrees.
+    #[allow(dead_code)]
     pub fn geo(lat: f64, lon: f64, rad: f64) -> GeocentricCoords {
         GeocentricCoords::new(lat.to_radians(), lon.to_radians(), rad)
     }
 
     /// Converts `self` to [`GeodeticCoords`]. The WGS84 Earth model is used.
-    pub fn to_geodetic(&self) -> GeodeticCoords {
+    pub fn to_geodetic(self) -> GeodeticCoords {
         let semi_major_axis: f64 = 6378.137;
         let flattening: f64 = 1.0 / 298.257223563;
         let semi_minor_axis: f64 = semi_major_axis * (1.0 - flattening);
@@ -45,7 +46,7 @@ impl GeocentricCoords {
     }
 
     /// Converts `self` to [`CartesianCoords`].
-    pub fn to_cartesian(&self) -> CartesianCoords {
+    pub fn to_cartesian(self) -> CartesianCoords {
         let x = self.rad * self.lat.cos() * self.lon.cos();
         let y = self.rad * self.lat.cos() * self.lon.sin();
         let z = self.rad * self.lat.sin();
@@ -128,12 +129,13 @@ impl GeodeticCoords {
         GeodeticCoords { lat, lon, rad }
     }
     /// Constructor with input `lat`, `lon` in degrees.
+    #[allow(dead_code)]
     pub fn geo(lat: f64, lon: f64, rad: f64) -> GeodeticCoords {
         GeodeticCoords::new(lat.to_radians(), lon.to_radians(), rad)
     }
 
     /// Converts to [`GeocentricCoords`]. The WGS84 Earth model is used.
-    pub fn to_geocentric(&self) -> GeocentricCoords {
+    pub fn to_geocentric(self) -> GeocentricCoords {
         let semi_major_axis: f64 = 6378.137;
         let flattening: f64 = 1.0 / 298.257223563;
         let semi_minor_axis: f64 = semi_major_axis * (1.0 - flattening);
@@ -262,6 +264,7 @@ impl LocalAngularCoords {
         LocalAngularCoords { az, el, range }
     }
     /// Constructor with inputs in degrees.
+    #[allow(dead_code)]
     pub fn from_degrees(az: f64, el: f64, range: f64) -> LocalAngularCoords {
         LocalAngularCoords::new(az.to_radians(), el.to_radians(), range)
     }

@@ -8,6 +8,7 @@ use dmap::formats::fitacf::FitacfRecord;
 use dmap::Record;
 use numpy::ndarray::{Array, ArrayD};
 
+/// Data from one range gate from a single radar.
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct RadarCell {
     pub groundscatter: i8,             // gsct in RST
@@ -23,6 +24,7 @@ pub struct RadarCell {
     pub elevation: f32,                // elv in RST
 }
 
+/// Data from one beam of a scan from one radar.
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarBeam {
     pub scan: i32,                // scan in RST
@@ -44,13 +46,8 @@ pub struct RadarBeam {
     pub scatter: Vec<i8>,         // sct in RST
     pub cells: Vec<RadarCell>,    // rng in RST
 }
-impl RadarBeam {
-    pub fn reset(&mut self) {
-        self.scatter.clear();
-        self.cells.clear();
-    }
-}
 
+/// Data from one scan from a single radar.
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct RadarScan {
     pub station_id: i16,           // stid in RST
@@ -61,12 +58,6 @@ pub struct RadarScan {
     pub beams: Vec<RadarBeam>,     // bm in RST
 }
 impl RadarScan {
-    /// Clears the beams
-    /// Called RadarScanReset in RST
-    pub fn reset(&mut self) {
-        self.beams.clear();
-    }
-
     /// Remove beams whose beam number is in beam_list
     /// Called RadarScanResetBeam in RST
     pub fn reset_beams(&mut self, beam_list: &[i32]) -> Result<(), GridError> {

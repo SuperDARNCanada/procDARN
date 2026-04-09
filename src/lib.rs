@@ -1,5 +1,26 @@
-use crate::fitting::fitacf3::fitacf_v3::{par_fitacf3, Fitacf3Error};
-use crate::gridding::grid::{fit2grid, fit2grid_file, GridArgs};
+//! Core SuperDARN Processing Tools
+//!
+//! [![github]](https://github.com/SuperDARNCanada/procdarn)
+//!
+//! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
+//!
+//! <br>
+//!
+//! This library also has a Python API using pyo3.
+//!
+//! This library is a re-implementation of the core tools from [SuperDARN's Radar Software Toolkit
+//! (RST)](https://github.com/SuperDARN/rst). Currently, only two binaries from RST are implemented.
+//! The goal is for the entire RAWACF -> FITACF -> GRID -> MAP
+//! pipeline to be implemented.
+//!
+//! | RST binaries        | `procdarn` function |
+//! | ------------------- | ------------------- |
+//! | `make_fit -fitacf3` | [`fitacf3`]         |
+//! | `make_grid`         | [`fit2grid`]        |
+//!
+//! The `procdarn` algorithms can be called with directly with data, or can be used to read data
+//! from files and run it through the algorithms.
+
 use clap::Parser;
 use dmap::error::DmapError;
 use dmap::formats::rawacf::RawacfRecord;
@@ -17,7 +38,10 @@ use pyo3::types::PyDict;
 pub mod error;
 pub mod fitting;
 pub mod gridding;
-pub mod utils;
+mod utils;
+
+pub use crate::fitting::fitacf3::fitacf_v3::{fitacf3, Fitacf3Error};
+pub use crate::gridding::grid::{fit2grid, fit2grid_file, GridArgs, GridError};
 
 /// Fits a list of RAWACF records into FITACF records using the FITACFv3 algorithm.
 #[pyfunction]
@@ -38,7 +62,7 @@ fn fitacf3_py(
             "Corrupted records: {errors:?}"
         ))))?
     }
-    let fitacf_recs = par_fitacf3(formatted_recs)
+    let fitacf_recs = fitacf3(formatted_recs)
         .map_err(PyErr::from)?
         .into_iter()
         .map(|rec| rec.inner())
@@ -49,7 +73,7 @@ fn fitacf3_py(
 /// Fits a RAWACF file into a FITACF record using the FITACFv3 algorithm.
 fn fitacf3_file(raw_file: PathBuf, fit_file: PathBuf) -> Result<(), Fitacf3Error> {
     let rawacf_records = RawacfRecord::read_file(raw_file)?;
-    let fitacf_records = par_fitacf3(rawacf_records)?;
+    let fitacf_records = fitacf3(rawacf_records)?;
     FitacfRecord::write_to_file(&fitacf_records, &fit_file, false)?;
     Ok(())
 }
@@ -86,7 +110,7 @@ fn fitacf3_cli(py: Python) -> PyResult<()> {
     let args = Fitacf3Args::parse_from(argv);
 
     let rawacf_records = RawacfRecord::read_file(args.infile)?;
-    let fitacf_records = par_fitacf3(rawacf_records)?;
+    let fitacf_records = fitacf3(rawacf_records)?;
 
     // Write to file
     FitacfRecord::write_to_file(&fitacf_records, &args.outfile, false)?;
