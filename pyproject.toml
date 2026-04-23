@@ -22,7 +22,9 @@ profile = "release"
 compatibility = "manylinux2014"
 auditwheel = "repair"
 strip = true
+python-source = "python"
+module-name = "procdarn.procdarn_rs"
 
 [project.scripts]
-raw2fit = "procdarn:raw2fit"
-fit2grid = "procdarn:fit2grid"
+raw2fit = "procdarn:raw2fit_cli"
+fit2grid = "procdarn:fit2grid_cli"

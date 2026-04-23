@@ -101,7 +101,7 @@ struct Fitacf3Args {
 
 /// Fits a RAWACF file into a FITACF file using the FITACFv3 algorithm.
 #[pyfunction]
-#[pyo3(name = "raw2fit")]
+#[pyo3(name = "raw2fit_cli")]
 fn fitacf3_cli(py: Python) -> PyResult<()> {
     let argv = py
         .import("sys")?
@@ -183,7 +183,7 @@ pub struct GridArgsCLI {
 
 /// Converts a set of FITACF files into a GRID file.
 #[pyfunction]
-#[pyo3(name = "fit2grid")]
+#[pyo3(name = "fit2grid_cli")]
 fn fit2grid_cli(py: Python) -> PyResult<()> {
     let argv = py
         .import("sys")?
@@ -197,7 +197,7 @@ fn fit2grid_cli(py: Python) -> PyResult<()> {
 
 /// Functions for SuperDARN data processing.
 #[pymodule]
-fn procdarn(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn procdarn_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fitacf3_py, m)?)?;
     m.add_function(wrap_pyfunction!(fitacf3_file_py, m)?)?;
     m.add_wrapped(wrap_pyfunction!(fitacf3_cli))?;
