@@ -109,6 +109,10 @@ pub fn fitacf3_single_threaded(raw_recs: Vec<RawacfRecord>) -> Result<Vec<Fitacf
 /// Will return `Err` if the [`RawacfRecord`]s do not have all required fields for fitting,
 /// or if the data within the [`RawacfRecord`]s are unsuitable for fitting for any reason.
 pub fn fitacf3(raw_recs: Vec<RawacfRecord>) -> Result<Vec<FitacfRecord>> {
+    if raw_recs.is_empty() {
+        return Ok(vec![]);
+    }
+
     let hdw = get_hdw(&raw_recs[0])?;
 
     // Fit the records!
