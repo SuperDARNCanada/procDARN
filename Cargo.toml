@@ -8,7 +8,7 @@ rust-version = "1.74.1"
 aacgmv2-rs = { git = "https://github.com/SuperDARNCanada/aacgmv2-rs.git", branch = "riir" }
 chrono = "0.4.44"
 clap = { version = "4.2.7", features = ["derive"] }
-darn-dmap = "0.7.0"
+darn-dmap = "0.8.2"
 igrf = { git = "https://github.com/SuperDARNCanada/igrf.git", branch = "main" }
 indexmap = "2.3.0"
 is_close = "0.1.3"
